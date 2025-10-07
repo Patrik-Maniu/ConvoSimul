@@ -1,0 +1,15 @@
+{
+    "api_version": "<Your_API_Version>",
+    "key": "<Your_API_Key>",
+    "endpoint": "<Your_API_Endpoint>",
+    "models": [
+        {
+            "deployment": "<Your_Deployment_Name_1>",
+            "model_name": "<Your_Model_Name_1>"
+        },
+        {
+            "deployment": "<Your_Deployment_Name_2>",
+            "model_name": "<Your_Model_Name_2>"
+        }
+    ]
+}
