@@ -1,0 +1,20 @@
+# Secrets & configuration files
+config/
+.env
+.env.*
+*.secret.json
+*.key
+
+# Editor junk
+.vscode/
+
+# Logs & outputs
+logs/
+*.log
+outputs/
+runs/
+
+# App artifacts
+*.sqlite3
+*.db
+*.tmp
