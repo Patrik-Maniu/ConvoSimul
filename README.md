@@ -14,7 +14,7 @@ The app then orchestrates the conversation (via Azure OpenAI), and when the stop
 - Stop conditions:
   - Max number of responses.
   - Trigger substring detection in any response.
-- Exports the full conversation to a timestamped `.txt`.
+- Exports the full conversation to a .pdf named after the current time of hte conversation
 
 # Setup
 
@@ -25,7 +25,7 @@ complete the setupModels.json in the config folder
 ```bash
 
 pip install --upgrade pip
-pip install openai PyQt6
+pip install openai PyQt6 reportlab
 ```
 
 ## With virtual enviroment
@@ -34,5 +34,5 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install --upgrade pip
-pip install openai PyQt6
+pip install openai PyQt6 reportlab
 ```
