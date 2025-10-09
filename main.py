@@ -40,34 +40,62 @@ class MainWindow(QWidget):
 
         # Paths
         self.config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
-
+        
         # Widgets
+        # First model boxes
         self.models_combo = QComboBox()
-        self.models_combo.setObjectName("models")
-        self.prompt_edit = QTextEdit()
-        self.prompt_edit.setObjectName("starting_prompt")
-        self.prompt_edit.setPlaceholderText("Enter the starting prompt...")
+        self.models_combo.setObjectName("model")
+        self.sys_edit = QTextEdit()
+        self.sys_edit.setObjectName("System_prompt")
+        self.sys_edit.setPlaceholderText("Enter the starting prompt...")
+        self.ignition_edit = QTextEdit()
+        self.ignition_edit.setObjectName("Ignition_prompt")
+        self.ignition_edit.setPlaceholderText("Enter the ignition prompt...")
+
+        # Second model boxes
+        self.models_combo_2 = QComboBox()
+        self.models_combo_2.setObjectName("model_2")
+        self.sys_edit_2 = QTextEdit()
+        self.sys_edit_2.setObjectName("System_prompt_2")
+        self.sys_edit_2.setPlaceholderText("Enter the starting prompt...")
 
         # Buttons / status
         self.start_btn = QPushButton("Start")
         self.reload_btn = QPushButton("Reload Models")
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
+        self.turns = QTextEdit()
+        self.turns.setObjectName("turns")
+        self.turns.setPlaceholderText("Enter the number of turns... (must be a positive integer & if empty defaults to 5)")
 
-        # Layout
-        form = QFormLayout()
-        form.addRow("Models:", self.models_combo)
-        form.addRow("Starting Prompt:", self.prompt_edit)
+        # Layouts for each model column
+        col1 = QFormLayout()
+        col1.addRow("Model A:", self.models_combo)
+        col1.addRow("System Prompt for A:", self.sys_edit)
+        col1.addRow("(Optional) Ignition Prompt:", self.ignition_edit)
 
+        col2 = QFormLayout()
+        col2.addRow("Model B:", self.models_combo_2)
+        col2.addRow("System Prompt for B:", self.sys_edit_2)
+
+        # Horizontal layout to hold the two columns
+        columns = QHBoxLayout()
+        columns.addLayout(col1)
+        columns.addLayout(col2)
+
+        # Buttons row
         btn_row = QHBoxLayout()
         btn_row.addWidget(self.start_btn)
         btn_row.addWidget(self.reload_btn)
+        btn_row.addWidget(self.turns)
         btn_row.addStretch(1)
 
+        # Root layout
         root = QVBoxLayout(self)
-        root.addLayout(form)
+        root.addLayout(columns)
         root.addLayout(btn_row)
         root.addWidget(self.status_label)
+
 
         # Signals
         self.start_btn.clicked.connect(self.on_start_clicked)
@@ -79,6 +107,7 @@ class MainWindow(QWidget):
     def populate_models(self):
         """Load models from JSON file into combo box. Never crashes the app."""
         self.models_combo.clear()
+        self.models_combo_2.clear()
         try:
             models = load_models_config(self.config_path)
         except Exception as e:
@@ -95,7 +124,8 @@ class MainWindow(QWidget):
         for m in models:
             label = f"{m['deployment']} — {m['model_name']}"
             self.models_combo.addItem(label, userData=m)
-
+            self.models_combo_2.addItem(label, userData=m)
+        
         self.status_label.setText(f"Loaded {len(models)} model(s) from {self.config_path}")
 
     def on_start_clicked(self):
@@ -104,14 +134,30 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, "No Models", "No models are loaded. Check your config and reload.")
             return
 
-        data = self.models_combo.currentData()
-        if not data or "deployment" not in data:
-            QMessageBox.warning(self, "Invalid Selection", "Selected model entry is invalid.")
+        model_1 = self.models_combo.currentData()
+        model_2 = self.models_combo_2.currentData()
+        if not model_1 or "deployment" not in model_1:
+            QMessageBox.warning(self, "Invalid Selection", "Selected model entry for Model A is invalid.")
             return
-
-        prompt = self.prompt_edit.toPlainText().strip()
-        if not prompt:
-            QMessageBox.warning(self, "Empty Prompt", "Please enter a starting prompt.")
+        if not model_2 or "deployment" not in model_2:
+            QMessageBox.warning(self, "Invalid Selection", "Selected model entry for Model B is invalid.")
+            return
+        setup_1 = self.sys_edit.toPlainText().strip()
+        ignition = self.ignition_edit.toPlainText().strip()
+        turns = self.turns.toPlainText().strip()
+        try:
+            turns_int = int(turns)
+            if turns_int <= 0:
+                raise ValueError("Number of turns must be positive.")
+        except ValueError as e:
+            QMessageBox.warning(self, "Invalid Turns", f"Please enter a valid number of turns:\n{e}")
+            return
+        setup_2 = self.sys_edit_2.toPlainText().strip()
+        if not setup_1:
+            QMessageBox.warning(self, "Empty System setup for Model A", "Please enter a system prompt.")
+            return
+        if not setup_2:
+            QMessageBox.warning(self, "Empty System setup for Model B", "Please enter a system prompt.")
             return
 
         # Lazy import so a bad conversation.py doesn't kill the window before it shows.
@@ -122,13 +168,11 @@ class MainWindow(QWidget):
             return
 
         try:
-            talk(data["deployment"], prompt)
+            talk(model_1["deployment"], setup_1, model_2["deployment"], setup_2, ignition, turns_int)
         except Exception as e:
             QMessageBox.critical(self, "talk() Error", f"talk(model, prompt) raised an error:\n{e}")
             return
-
-        QMessageBox.information(self, "Started", f"Conversation started with model '{data['deployment']}'.")
-        self.status_label.setText(f"Status: started with model '{data['deployment']}'.")
+        return
 
 
 def main():
