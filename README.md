@@ -13,8 +13,8 @@ The app then orchestrates the conversation (via Azure OpenAI), and when the stop
 - Turn-taking: A speaks first, B responds, repeat.
 - Stop conditions:
   - Max number of responses.
-  - Trigger substring detection in any response.
-- Exports the full conversation to a .pdf named after the current time of hte conversation
+  - Conversation stopped by user
+- Exports the full conversation to a .pdf, the file name is chosen before starting the conversation
 
 # Setup
 

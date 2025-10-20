@@ -106,7 +106,7 @@ def _conversation_to_pdf(messages, output_path, title="Conversation", exported_a
 
 # -------------------- Public function to be called --------------------
 
-def export_conversation_to_pdf(messages, output_dir="./outputs", filename_prefix=""):
+def export_conversation_to_pdf(messages, output_dir="./outputs", filename_prefix="", name="output"):
     """
     Create a PDF from `messages` and save it into `output_dir` with a timestamped filename.
 
@@ -125,15 +125,9 @@ def export_conversation_to_pdf(messages, output_dir="./outputs", filename_prefix
 
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
-    now = datetime.now()
-
-    stamp = now.strftime("%Y-%m-%d_%H-%M-%S")
-    safe_prefix = (filename_prefix.strip().replace(" ", "_") + "_") if filename_prefix.strip() else ""
-    filename = f"{safe_prefix}{stamp}.pdf"
+    filename = f"{name}.pdf"
     output_path = os.path.abspath(os.path.join(output_dir, filename))
 
     title = "Conversation"
-    exported_at_text = f"Exported on {now.strftime('%Y-%m-%d %H:%M:%S %Z')}"
-
-    _conversation_to_pdf(messages, output_path, title=title, exported_at_text=exported_at_text)
+    _conversation_to_pdf(messages, output_path, title=title, exported_at_text=f"Exported on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     return output_path
