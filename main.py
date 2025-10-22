@@ -43,6 +43,12 @@ class MainWindow(QWidget):
         self.config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
         
         # Widgets
+        # Naming models
+        self.name_A = QLineEdit()
+        self.name_A.setObjectName("Name for A inside conversation")
+        self.name_B = QLineEdit()
+        self.name_B.setObjectName("Name for B inside conversation")
+
         # First model boxes
         self.models_combo = QComboBox()
         self.models_combo.setObjectName("model")
@@ -62,19 +68,21 @@ class MainWindow(QWidget):
         self.reload_btn = QPushButton("Reload Models")
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        self.turns = QTextEdit()
+        self.turns = QLineEdit()
         self.turns.setObjectName("turns")
         self.turns.setPlaceholderText("Enter the number of turns... (must be a positive integer & if empty defaults to 5)")
-        self.conversation_name = QTextEdit()
+        self.conversation_name = QLineEdit()
         self.conversation_name.setObjectName("Conversation_name")
         self.conversation_name.setPlaceholderText("Enter the conversation name...")
 
         # Layouts for each model column
         col1 = QFormLayout()
+        col1.addRow("Name for Model A:", self.name_A)
         col1.addRow("Model A:", self.models_combo)
         col1.addRow("System Prompt for A:", self.sys_edit)
 
         col2 = QFormLayout()
+        col2.addRow("Name for Model B:", self.name_B)
         col2.addRow("Model B:", self.models_combo_2)
         col2.addRow("System Prompt for B:", self.sys_edit_2)
 
@@ -145,8 +153,8 @@ class MainWindow(QWidget):
 
         setup_1 = self.sys_edit.toPlainText().strip()
         setup_2 = self.sys_edit_2.toPlainText().strip()
-        name = self.conversation_name.toPlainText().strip()
-        turns = self.turns.toPlainText().strip()
+        name = self.conversation_name.text().strip()
+        turns = self.turns.text().strip()
 
         if not setup_1:
             QMessageBox.warning(self, "Empty System setup for Model A", "Please enter a system prompt.")
@@ -162,9 +170,11 @@ class MainWindow(QWidget):
         except ValueError as e:
             QMessageBox.warning(self, "Invalid Turns", f"Please enter a valid number of turns:\n{e}")
             return
+        name_A = self.name_A.text().strip()
+        name_B = self.name_B.text().strip()
         A = [{"role": "system", "content": setup_1}]
         B = [{"role": "system", "content": setup_2}]
-        PDF = [{"role": "setup for A:", "content": setup_1}, {"role": "setup for B:", "content": setup_2}]
+        PDF = [{"role": f"setup for {name_A}:", "content": setup_1}, {"role": f"setup for {name_B}:", "content": setup_2}]
         # Prepare arguments exactly as your original talk() expects
         talk_args = (
             name,                   # conversation name
@@ -173,7 +183,9 @@ class MainWindow(QWidget):
             A,
             B,
             PDF,
-            turns_int               # number of turns to run/advance
+            turns_int,               # number of turns to run/advance
+            name_A,
+            name_B
         )
 
         # Keep a reference so it doesn't get garbage collected
@@ -190,7 +202,7 @@ class ConversationDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Conversation")
         self.resize(700, 500)
-        self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns = talk_args
+        self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns, self.name_A, self.name_B = talk_args
         self.turn = True
         self.output = QTextEdit(self)
         self.output.setReadOnly(True)
@@ -232,15 +244,15 @@ class ConversationDialog(QDialog):
         # Append result to output
         if self.output.toPlainText():
             if self.turn:
-                self.output.append("\n" + "A: " + "\n")
+                self.output.append("\n" + f"{self.name_A}: " + "\n")
             else:
-                self.output.append("\n" + "B: " + "\n")
+                self.output.append("\n" + f"{self.name_B}: " + "\n")
             self.output.append("\n" + result)
         else:
             if self.turn:
-                self.output.setPlainText("A: " + "\n")
+                self.output.setPlainText(f"{self.name_A}: " + "\n")
             else:
-                self.output.setPlainText("B: " + "\n")
+                self.output.setPlainText(f"{self.name_B}: " + "\n")
             self.output.append(result)
 
         # Scroll to bottom
@@ -252,11 +264,11 @@ class ConversationDialog(QDialog):
         if self.turn:
             self.A.append({"role": "assistant", "content": result})
             self.B.append({"role": "user", "content": result})
-            self.PDF.append({"role": "A:", "content": result})
+            self.PDF.append({"role": f"{self.name_A}:", "content": result})
         else:
             self.A.append({"role": "user", "content": result})
             self.B.append({"role": "assistant", "content": result})
-            self.PDF.append({"role": "B:", "content": result})
+            self.PDF.append({"role": f"{self.name_B}:", "content": result})
         self.turn = not self.turn
         self.turns -= 1
         if self.turns == 0:
