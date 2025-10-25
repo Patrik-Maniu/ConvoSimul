@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Callable
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QTextEdit, QComboBox, QPushButton,
-    QLabel, QFormLayout, QMessageBox, QDialog, QSlider
+    QLabel, QFormLayout, QMessageBox, QDialog, QSlider, QFileDialog
 )
 from PDFer import export_conversation_to_pdf
 
@@ -89,13 +91,15 @@ class MainWindow(QWidget):
         self.turns = QLineEdit()
         self.turns.setObjectName("turns")
         self.turns.setPlaceholderText("Enter the number of turns... (must be a positive integer & if empty defaults to 5)")
-        self.conversation_name = QLineEdit()
-        self.conversation_name.setObjectName("Conversation_name")
-        self.conversation_name.setPlaceholderText("Enter the conversation name...")
+        self.file_name = QLineEdit()
+        self.file_name.setObjectName("File_name")
+        self.file_name.setPlaceholderText("Enter the file name...")
 
             # Buttons / status
         self.start_btn = QPushButton("Start")
         self.reload_btn = QPushButton("Reload Models")
+        self.save_presets_btn = QPushButton("Save Presets")
+        self.load_presets_btn = QPushButton("Load Presets")
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
 
@@ -123,13 +127,15 @@ class MainWindow(QWidget):
         settings_row = QVBoxLayout()
         settings_row.addWidget(QLabel("Turns:"))
         settings_row.addWidget(self.turns)
-        settings_row.addWidget(QLabel("Conversation Name:"))
-        settings_row.addWidget(self.conversation_name)
+        settings_row.addWidget(QLabel("File Name:"))
+        settings_row.addWidget(self.file_name)
 
             # Buttons row
         btn_row = QHBoxLayout()
         btn_row.addWidget(self.start_btn)
         btn_row.addWidget(self.reload_btn)
+        btn_row.addWidget(self.save_presets_btn)
+        btn_row.addWidget(self.load_presets_btn)
 
         btn_row.addStretch(1)
 
@@ -144,6 +150,8 @@ class MainWindow(QWidget):
             # Signals
         self.start_btn.clicked.connect(self.on_start_clicked)
         self.reload_btn.clicked.connect(self.populate_models)
+        self.save_presets_btn.clicked.connect(self.save_presets)
+        self.load_presets_btn.clicked.connect(self.load_presets)
 
             # Populate
         self.populate_models()
@@ -188,7 +196,7 @@ class MainWindow(QWidget):
 
         setup_1 = self.sys_edit.toPlainText().strip()
         setup_2 = self.sys_edit_2.toPlainText().strip()
-        name = self.conversation_name.text().strip()
+        name = self.file_name.text().strip()
         turns = self.turns.text().strip()
 
         if not setup_1:
@@ -242,6 +250,59 @@ class MainWindow(QWidget):
         self.conv_dialog = ConversationDialog(talk_args=talk_args, parent=self)
         self.conv_dialog.setModal(True)   # optional: make it modal
         self.conv_dialog.show()
+
+    def save_presets(self):
+        # Save current settings to a JSON file.
+        file_name = self.file_name.text().strip()
+        presets = {
+            "name_A": self.name_A.text(),
+            "name_B": self.name_B.text(),
+            "sys_A": self.sys_edit.toPlainText(),
+            "sys_B": self.sys_edit_2.toPlainText(),
+            "seed_A": self.seed_A.text(),
+            "max_tokens_A": self.max_tokens_A.text(),
+            "seed_B": self.seed_B.text(),
+            "max_tokens_B": self.max_tokens_B.text(),
+            "turns": self.turns.text(),
+            "file_name": file_name,
+        }
+        # Ensure the subfolder 'presets' exists
+        os.makedirs("presets", exist_ok=True)
+        # Construct the full path (add .json extension if missing)
+        if not file_name.lower().endswith(".json"):
+            file_name += ".json"
+        file_path = os.path.join("presets", file_name)
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(presets, f, ensure_ascii=False, indent=4)
+            self.status_label.setText(f"Status: Preset saved to {file_path}")
+            print(f"Preset saved successfully to {file_path}")
+        except Exception as e:
+            print(f"Error saving preset: {e}")
+
+    def load_presets(self):
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open JSON File",         # Window title
+            "",                       # Starting directory ("" = current)
+            "JSON Files (*.json);;All Files (*)"  # File filter
+        )
+        if not file_name:
+            return  # User cancelled
+        self.status_label.setText(f"Loading preset from {file_name}...")
+        with open(file_name, "r") as f:
+            presets = json.load(f)
+            self.name_A.setText(presets.get("name_A", ""))
+            self.name_B.setText(presets.get("name_B", ""))
+            self.sys_edit.setPlainText(presets.get("sys_A", ""))
+            self.sys_edit_2.setPlainText(presets.get("sys_B", ""))
+            self.seed_A.setText(presets.get("seed_A", ""))
+            self.max_tokens_A.setText(presets.get("max_tokens_A", ""))
+            self.seed_B.setText(presets.get("seed_B", ""))
+            self.max_tokens_B.setText(presets.get("max_tokens_B", ""))
+            self.turns.setText(presets.get("turns", ""))
+            self.file_name.setText(presets.get("file_name", ""))
+        return
 
 class ConversationDialog(QDialog):
     """
