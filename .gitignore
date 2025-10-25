@@ -1,5 +1,6 @@
 # Secrets & configuration files
 config/
+presets/
 .env
 .env.*
 *.secret.json
