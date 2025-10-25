@@ -2,9 +2,8 @@ import json
 import os
 import re
 from openai import AzureOpenAI
-from PDFer import export_conversation_to_pdf
 
-def talk(msgs, dep):
+def talk(msgs, dep, config):
     try:
         api_version, key, endpoint = load_api_config()
     except Exception as e:
@@ -14,10 +13,13 @@ def talk(msgs, dep):
     azure_endpoint=endpoint,
     api_key=key,
 )
+    seed, max_tokens = config
     response = client.chat.completions.create(
         messages=msgs,
-        max_completion_tokens=1000,
-        model=dep
+        model=dep,
+        max_completion_tokens=max_tokens,
+        n=1,
+        seed=seed,
         )
     return response.choices[0].message.content
 

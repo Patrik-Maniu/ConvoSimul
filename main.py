@@ -8,7 +8,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QTextEdit, QComboBox, QPushButton,
-    QLabel, QFormLayout, QMessageBox, QDialog
+    QLabel, QFormLayout, QMessageBox, QDialog, QSlider
 )
 from PDFer import export_conversation_to_pdf
 
@@ -41,33 +41,51 @@ class MainWindow(QWidget):
 
         # Paths
         self.config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
-        
+        self.labels_slider_map: Dict[QSlider, QLabel] = {}
         # Widgets
-        # Naming models
+            # Naming models
         self.name_A = QLineEdit()
         self.name_A.setObjectName("Name for A inside conversation")
         self.name_B = QLineEdit()
         self.name_B.setObjectName("Name for B inside conversation")
 
-        # First model boxes
+            # First model boxes
         self.models_combo = QComboBox()
         self.models_combo.setObjectName("model")
         self.sys_edit = QTextEdit()
         self.sys_edit.setObjectName("System_prompt")
         self.sys_edit.setPlaceholderText("Enter the starting prompt...")
 
-        # Second model boxes
+            # Second model boxes
         self.models_combo_2 = QComboBox()
         self.models_combo_2.setObjectName("model_2")
         self.sys_edit_2 = QTextEdit()
         self.sys_edit_2.setObjectName("System_prompt_2")
         self.sys_edit_2.setPlaceholderText("Enter the starting prompt...")
 
-        # Buttons / status
-        self.start_btn = QPushButton("Start")
-        self.reload_btn = QPushButton("Reload Models")
-        self.status_label = QLabel("")
-        self.status_label.setWordWrap(True)
+            # Settings A
+                # Seed
+        self.seed_A = QLineEdit()
+        self.seed_A.setObjectName("seed_A")
+        self.seed_A.setPlaceholderText("Enter seed (must be a positive integer & if empty defaults to random chosen by the server, deterministic behavior is not guaranteed)")
+
+                # Max tokens
+        self.max_tokens_A = QLineEdit()
+        self.max_tokens_A.setObjectName("max_tokens_A")
+        self.max_tokens_A.setPlaceholderText("Enter max_tokens for A... (must be a positive integer & if empty defaults to 1000)")
+
+            # Settings B
+                # Seed
+        self.seed_B = QLineEdit()
+        self.seed_B.setObjectName("seed_B")
+        self.seed_B.setPlaceholderText("Enter seed (must be a positive integer & if empty defaults to random chosen by the server, deterministic behavior is not guaranteed)")
+
+                # Max tokens
+        self.max_tokens_B = QLineEdit()
+        self.max_tokens_B.setObjectName("max_tokens_B")
+        self.max_tokens_B.setPlaceholderText("Enter max_tokens for B... (must be a positive integer & if empty defaults to 1000)")
+        
+            # Simulation settings
         self.turns = QLineEdit()
         self.turns.setObjectName("turns")
         self.turns.setPlaceholderText("Enter the number of turns... (must be a positive integer & if empty defaults to 5)")
@@ -75,42 +93,59 @@ class MainWindow(QWidget):
         self.conversation_name.setObjectName("Conversation_name")
         self.conversation_name.setPlaceholderText("Enter the conversation name...")
 
-        # Layouts for each model column
+            # Buttons / status
+        self.start_btn = QPushButton("Start")
+        self.reload_btn = QPushButton("Reload Models")
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+
+            # Layouts for each model column
         col1 = QFormLayout()
         col1.addRow("Name for Model A:", self.name_A)
         col1.addRow("Model A:", self.models_combo)
         col1.addRow("System Prompt for A:", self.sys_edit)
+        col1.addRow("Seed for A:", self.seed_A)
+        col1.addRow("Max tokens for A:", self.max_tokens_A)
 
         col2 = QFormLayout()
         col2.addRow("Name for Model B:", self.name_B)
         col2.addRow("Model B:", self.models_combo_2)
         col2.addRow("System Prompt for B:", self.sys_edit_2)
+        col2.addRow("Seed for B:", self.seed_B)
+        col2.addRow("Max tokens for B:", self.max_tokens_B)
 
-        # Horizontal layout to hold the two columns
+            # Horizontal layout to hold the two columns
         columns = QHBoxLayout()
         columns.addLayout(col1)
         columns.addLayout(col2)
 
-        # Buttons row
+            # General settings row
+        settings_row = QVBoxLayout()
+        settings_row.addWidget(QLabel("Turns:"))
+        settings_row.addWidget(self.turns)
+        settings_row.addWidget(QLabel("Conversation Name:"))
+        settings_row.addWidget(self.conversation_name)
+
+            # Buttons row
         btn_row = QHBoxLayout()
         btn_row.addWidget(self.start_btn)
         btn_row.addWidget(self.reload_btn)
-        btn_row.addWidget(self.turns)
-        btn_row.addWidget(self.conversation_name)
+
         btn_row.addStretch(1)
 
-        # Root layout
+            # Root layout
         root = QVBoxLayout(self)
         root.addLayout(columns)
+        root.addLayout(settings_row)
         root.addLayout(btn_row)
         root.addWidget(self.status_label)
 
 
-        # Signals
+            # Signals
         self.start_btn.clicked.connect(self.on_start_clicked)
         self.reload_btn.clicked.connect(self.populate_models)
 
-        # Populate
+            # Populate
         self.populate_models()
 
     def populate_models(self):
@@ -172,20 +207,35 @@ class MainWindow(QWidget):
             return
         name_A = self.name_A.text().strip()
         name_B = self.name_B.text().strip()
+        config_A = (
+            int(self.seed_A.text() if self.seed_A.text().strip().isdigit() else 0),
+            int(self.max_tokens_A.text() if self.max_tokens_A.text().strip().isdigit() else 1000),
+        )
+        config_B = (
+            int(self.seed_B.text() if self.seed_B.text().strip().isdigit() else 0),
+            int(self.max_tokens_B.text() if self.max_tokens_B.text().strip().isdigit() else 1000),
+        )
+        if config_A[0] == 0:
+            config_A = (None, config_A[1])
+        if config_B[0] == 0:
+            config_B = (None, config_B[1])
         A = [{"role": "system", "content": setup_1}]
         B = [{"role": "system", "content": setup_2}]
-        PDF = [{"role": f"setup for {name_A}:", "content": setup_1}, {"role": f"setup for {name_B}:", "content": setup_2}]
+        PDF = [{"role": f"setup for {name_A}:", "content": f"System prompt: {setup_1}\n Max tokens: {config_A[1]}\n Seed: {config_A[0]}"},
+               {"role": f"setup for {name_B}:", "content": f"System prompt: {setup_2}\n Max tokens: {config_B[1]}\n Seed: {config_B[0]}" }]
         # Prepare arguments exactly as your original talk() expects
         talk_args = (
-            name,                   # conversation name
-            model_1["deployment"],  # model A
-            model_2["deployment"],  # model B
+            name,
+            model_1["deployment"],
+            model_2["deployment"],
             A,
             B,
             PDF,
-            turns_int,               # number of turns to run/advance
+            turns_int,
             name_A,
-            name_B
+            name_B,
+            config_A,
+            config_B
         )
 
         # Keep a reference so it doesn't get garbage collected
@@ -202,7 +252,7 @@ class ConversationDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Conversation")
         self.resize(700, 500)
-        self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns, self.name_A, self.name_B = talk_args
+        self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns, self.name_A, self.name_B, self.config_A, self.config_B = talk_args
         self.turn = True
         self.output = QTextEdit(self)
         self.output.setReadOnly(True)
@@ -222,6 +272,7 @@ class ConversationDialog(QDialog):
         self.next_btn.clicked.connect(self.on_next_clicked)
         self.stop_btn.clicked.connect(self.on_stop_clicked)
         self.on_next_clicked()
+
     def on_next_clicked(self):
         # Lazy import so a bad conversation.py doesn't kill the window before it shows.
         try:
@@ -232,9 +283,9 @@ class ConversationDialog(QDialog):
         
         try:
             if self.turn:
-                result = talk(msgs=self.A, dep=self.deploy_A)
+                result = talk(msgs=self.A, dep=self.deploy_A, config=self.config_A)
             else:
-                result = talk(msgs=self.B, dep=self.deploy_B)
+                result = talk(msgs=self.B, dep=self.deploy_B, config=self.config_B)
         except Exception as e:
             # Show error in the text area and disable Next
             self.output.append(f"\n[Error calling talk()]: {e}")
