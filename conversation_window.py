@@ -20,16 +20,19 @@ class ConversationDialog(QDialog):
         self.resize(700, 500)
         self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns, self.name_A, self.name_B, self.config_A, self.config_B = talk_args
         self.turn = True
+        self.save_N = 1
         self.output = QTextEdit(self)
         self.output.setReadOnly(True)
 
         self.next_btn = QPushButton("Next", self)
         self.stop_btn = QPushButton("Stop", self)
+        self.save_btn = QPushButton("Save", self)
 
         btns = QHBoxLayout()
         btns.addStretch(1)
         btns.addWidget(self.next_btn)
         btns.addWidget(self.stop_btn)
+        btns.addWidget(self.save_btn)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.output)
@@ -37,6 +40,7 @@ class ConversationDialog(QDialog):
 
         self.next_btn.clicked.connect(self.on_next_clicked)
         self.stop_btn.clicked.connect(self.on_stop_clicked)
+        self.save_btn.clicked.connect(self.on_save_clicked)
         self.on_next_clicked()
 
     def on_next_clicked(self):
@@ -96,3 +100,8 @@ class ConversationDialog(QDialog):
         export_conversation_to_pdf(messages=self.PDF, name=self.name)
         QApplication.instance().quit()
         self.close()
+    
+    def on_save_clicked(self):
+        export_conversation_to_pdf(messages=self.PDF, name=self.name + str(self.save_N))
+        self.save_N += 1
+

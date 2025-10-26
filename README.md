@@ -19,6 +19,7 @@ The app then orchestrates the conversation (via Azure OpenAI)
 - In this new window there are 2 buttons
   - Next: will continue the conversation, sending an API request to get the next message completion
   - Stop: will terminate the program and save the conversation and it's configuration in a file named <file name>.pdf in the directory .\outputs
+  - Save: will save current conversation in a file named <file name><number of saved in this session>.pdf in the directory .\outputs
 
 ## TODOs
 - Save file with a button in the conversation window
