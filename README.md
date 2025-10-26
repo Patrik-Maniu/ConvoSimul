@@ -22,7 +22,6 @@ The app then orchestrates the conversation (via Azure OpenAI)
   - Save: will save current conversation in a file named <file name><number of saved in this session>.pdf in the directory .\outputs
 
 ## TODOs
-- Save file with a button in the conversation window
 - Save conversations as .json too, to be later used as checkpoints
 - Load preset conversations
 - Get a third LLM to check if the 2 LLMs conversin are going out of scope
