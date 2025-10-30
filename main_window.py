@@ -339,12 +339,10 @@ class MainWindow(QWidget):
             self.A_load = data["A"]
             self.B_load = data["B"]
             for msg in self.A_load:
-                if msg["role"] == "user":
-                    self.PDF_load.append({"role": f"{self.name_A.text().strip()}:", "content": msg["content"]})
                 if msg["role"] == "assistant":
+                    self.PDF_load.append({"role": f"{self.name_A.text().strip()}:", "content": msg["content"]})
+                if msg["role"] == "user":
                     self.PDF_load.append({"role": f"{self.name_B.text().strip()}:", "content": msg["content"]})
-                if msg["role"] == "system":
-                    self.sys_edit.setPlainText(msg["content"])
             self.flag_conversation_loaded = True
             self.status_label.setText(f"Conversation loaded from {file_name}. You can now start the simulation.")
         return
