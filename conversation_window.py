@@ -50,6 +50,19 @@ class ConversationDialog(QDialog):
         self.stop_btn.clicked.connect(self.on_stop_clicked)
         self.save_btn.clicked.connect(self.on_save_clicked)
         self.save_json.clicked.connect(self.json_save)
+
+        # Setup
+        for msg in self.A:
+            if msg["role"] == "assistant":
+                self.output.append(f"{self.name_A}: " + "\n" + msg["content"] + "\n")
+            if msg["role"] == "user":
+                self.output.append(f"{self.name_B}: " + "\n" + msg["content"] + "\n")
+        # Check turn
+        if len(self.A) % 2 == 1:
+            self.turn = True
+        else:
+            self.turn = False
+
         self.on_next_clicked()
 
     def on_next_clicked(self):
