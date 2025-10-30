@@ -19,10 +19,10 @@ The app then orchestrates the conversation (via Azure OpenAI)
 - In this new window there are 2 buttons
   - Next: will continue the conversation, sending an API request to get the next message completion
   - Stop: will terminate the program and save the conversation and it's configuration in a file named <file name>.pdf in the directory .\outputs
-  - Save: will save current conversation in a file named <file name><number of saved in this session>.pdf in the directory .\outputs
+  - Save to PDF: will save current conversation in a file named <file name><number of saved in this session>.pdf in the directory .\outputs
+  - Save to JSON: will save current conversation in a file named <file name><number of saved in this session>.json in the directory .\conversations
 
 ## TODOs
-- Save conversations as .json too, to be later used as checkpoints
 - Load preset conversations
 - Get a third LLM to check if the 2 LLMs conversin are going out of scope
 - Use files (.pdf, .png etc...) as part of the starting input

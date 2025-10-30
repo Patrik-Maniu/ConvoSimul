@@ -1,6 +1,7 @@
 # Secrets & configuration files
 config/
 presets/
+conversations/
 .env
 .env.*
 *.secret.json

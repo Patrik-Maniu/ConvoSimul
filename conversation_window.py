@@ -1,3 +1,5 @@
+import os
+import json
 from PyQt6.QtWidgets import (
     QDialog,
     QTextEdit,
@@ -20,27 +22,34 @@ class ConversationDialog(QDialog):
         self.resize(700, 500)
         self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns, self.name_A, self.name_B, self.config_A, self.config_B = talk_args
         self.turn = True
-        self.save_N = 1
+        self.save_N_pdf = 1
+        self.save_N_json = 1
         self.output = QTextEdit(self)
         self.output.setReadOnly(True)
 
         self.next_btn = QPushButton("Next", self)
         self.stop_btn = QPushButton("Stop", self)
-        self.save_btn = QPushButton("Save", self)
+        self.save_btn = QPushButton("Save to PDF", self)
+        self.save_json = QPushButton("Save to JSON", self)
+
 
         btns = QHBoxLayout()
         btns.addStretch(1)
         btns.addWidget(self.next_btn)
         btns.addWidget(self.stop_btn)
         btns.addWidget(self.save_btn)
+        btns.addWidget(self.save_json)
+        self.status_label = QMessageBox(self)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.output)
         layout.addLayout(btns)
+        layout.addWidget(self.status_label)
 
         self.next_btn.clicked.connect(self.on_next_clicked)
         self.stop_btn.clicked.connect(self.on_stop_clicked)
         self.save_btn.clicked.connect(self.on_save_clicked)
+        self.save_json.clicked.connect(self.json_save)
         self.on_next_clicked()
 
     def on_next_clicked(self):
@@ -105,3 +114,24 @@ class ConversationDialog(QDialog):
         export_conversation_to_pdf(messages=self.PDF, name=self.name + str(self.save_N))
         self.save_N += 1
 
+    def json_save(self):
+        file_name = self.name + str(self.save_N_json)
+        messages = {
+            "A": self.A,
+            "B": self.B,
+        }
+        # Ensure the subfolder 'conversations' exists
+        os.makedirs("conversations", exist_ok=True)
+        # Construct the full path (add .json extension if missing)
+        if not file_name.lower().endswith(".json"):
+            file_name += ".json"
+        file_path = os.path.join("conversations", file_name)
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(messages, f, ensure_ascii=False, indent=4)
+            self.save_N_json += 1
+            self.status_label.setText(f"Status: Conversation saved to {file_path}")
+            print(f"Conversation saved successfully to {file_path}")
+            
+        except Exception as e:
+            print(f"Error saving conversation: {e}")
