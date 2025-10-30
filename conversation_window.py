@@ -111,14 +111,18 @@ class ConversationDialog(QDialog):
         self.close()
     
     def on_save_clicked(self):
-        export_conversation_to_pdf(messages=self.PDF, name=self.name + str(self.save_N))
-        self.save_N += 1
+        export_conversation_to_pdf(messages=self.PDF, name=self.name + str(self.save_N_pdf))
+        self.save_N_pdf += 1
 
     def json_save(self):
         file_name = self.name + str(self.save_N_json)
+        temp_A = self.A.copy()
+        temp_B = self.B.copy()
+        temp_A = [msg for msg in temp_A if msg["role"] != "system"]
+        temp_B = [msg for msg in temp_B if msg["role"] != "system"]
         messages = {
-            "A": self.A,
-            "B": self.B,
+            "A": temp_A,
+            "B": temp_B,
         }
         # Ensure the subfolder 'conversations' exists
         os.makedirs("conversations", exist_ok=True)

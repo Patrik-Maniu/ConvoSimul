@@ -44,6 +44,9 @@ class MainWindow(QWidget):
         super().__init__()
         self.setWindowTitle("LLM Conversation Setup")
         self.resize(560, 420)
+        self.A_load = []
+        self.B_load = []
+        self.PDF_load = []
 
         # Paths
         self.config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
@@ -104,6 +107,9 @@ class MainWindow(QWidget):
         self.reload_btn = QPushButton("Reload Models")
         self.save_presets_btn = QPushButton("Save Presets")
         self.load_presets_btn = QPushButton("Load Presets")
+        self.flag_conversation_loaded = False
+        self.load_conversation_btn = QPushButton("Load Conversation")
+        self.flush_conversation_btn = QPushButton("Flush Conversations")
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
 
@@ -140,6 +146,8 @@ class MainWindow(QWidget):
         btn_row.addWidget(self.reload_btn)
         btn_row.addWidget(self.save_presets_btn)
         btn_row.addWidget(self.load_presets_btn)
+        btn_row.addWidget(self.load_conversation_btn)
+        btn_row.addWidget(self.flush_conversation_btn)
 
         btn_row.addStretch(1)
 
@@ -156,6 +164,8 @@ class MainWindow(QWidget):
         self.reload_btn.clicked.connect(self.populate_models)
         self.save_presets_btn.clicked.connect(self.save_presets)
         self.load_presets_btn.clicked.connect(self.load_presets)
+        self.load_conversation_btn.clicked.connect(self.load_conversation)
+        self.flush_conversation_btn.clicked.connect(self.flush_conversation)
 
             # Populate
         self.populate_models()
@@ -233,8 +243,14 @@ class MainWindow(QWidget):
             config_B = (None, config_B[1])
         A = [{"role": "system", "content": setup_1}]
         B = [{"role": "system", "content": setup_2}]
-        PDF = [{"role": f"setup for {name_A}:", "content": f"System prompt: {setup_1}\n Max tokens: {config_A[1]}\n Seed: {config_A[0]}"},
-               {"role": f"setup for {name_B}:", "content": f"System prompt: {setup_2}\n Max tokens: {config_B[1]}\n Seed: {config_B[0]}" }]
+        PDF = [{"role": f"system prompt for {name_A}:", "content": f"{setup_1}\n"},
+                {"role": f"config for {name_A}:", "content": f"Max tokens: {config_A[1]}\n Seed: {config_A[0]}"},
+                {"role": f"system prompt for {name_B}:", "content": f"{setup_2}\n"},
+                {"role": f"config for {name_B}:", "content": f"Max tokens: {config_B[1]}\n Seed: {config_B[0]}"}]
+        if self.flag_conversation_loaded:
+            A.extend(self.A_load)
+            B.extend(self.B_load)
+            PDF.extend(self.PDF_load)
         # Prepare arguments exactly as your original talk() expects
         talk_args = (
             name,
@@ -288,13 +304,13 @@ class MainWindow(QWidget):
         file_name, _ = QFileDialog.getOpenFileName(
             self,
             "Open JSON File",         # Window title
-            "",                       # Starting directory ("" = current)
+            "presets/",                       # Starting directory ("" = current)
             "JSON Files (*.json);;All Files (*)"  # File filter
         )
         if not file_name:
             return  # User cancelled
         self.status_label.setText(f"Loading preset from {file_name}...")
-        with open(file_name, "r") as f:
+        with open(file_name, "r", encoding="utf-8") as f:
             presets = json.load(f)
             self.name_A.setText(presets.get("name_A", ""))
             self.name_B.setText(presets.get("name_B", ""))
@@ -306,4 +322,32 @@ class MainWindow(QWidget):
             self.max_tokens_B.setText(presets.get("max_tokens_B", ""))
             self.turns.setText(presets.get("turns", ""))
             self.file_name.setText(presets.get("file_name", ""))
+        return
+
+    def load_conversation(self):
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open JSON File",         # Window title
+            "conversations/",                       # Starting directory ("" = current)
+            "JSON Files (*.json);;All Files (*)"  # File filter
+        )
+        if not file_name:
+            return  # User cancelled
+        self.status_label.setText(f"Loading conversation from {file_name}...")
+        with open(file_name, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            self.A_load = data["A"]
+            self.B_load = data["B"]
+            for msg in self.A_load:
+                if msg["role"] == "user":
+                    self.PDF_load.append({"role": f"{self.name_A.text().strip()}:", "content": msg["content"]})
+                if msg["role"] == "assistant":
+                    self.PDF_load.append({"role": f"{self.name_B.text().strip()}:", "content": msg["content"]})
+                if msg["role"] == "system":
+                    self.sys_edit.setPlainText(msg["content"])
+            self.flag_conversation_loaded = True
+            self.status_label.setText(f"Conversation loaded from {file_name}. You can now start the simulation.")
+        return
+    def flush_conversation(self):
+        self.flag_conversation_loaded = False
         return

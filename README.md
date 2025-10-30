@@ -12,6 +12,7 @@ The app then orchestrates the conversation (via Azure OpenAI)
   - Max tokens per response used by each LLM
   - Number of turns the conversation will go on for
   - File name of where to save data
+- Be able to load a custom conversation as a start
 - These config settings can be saved with a dedicated button
 - Saving will create a file named <file name>.json in the directory .\presets
 - Presets files can be loaded with a dedicated button
@@ -23,10 +24,10 @@ The app then orchestrates the conversation (via Azure OpenAI)
   - Save to JSON: will save current conversation in a file named <file name><number of saved in this session>.json in the directory .\conversations
 
 ## TODOs
-- Load preset conversations
 - Get a third LLM to check if the 2 LLMs conversin are going out of scope
 - Use files (.pdf, .png etc...) as part of the starting input
 - Localization
+- Extend conversation and see turns left
 - Check for max lenth of "system" prompt
 - Auto mode for X number of turns (maybe stop if the 3rd LLM deems it necesary)
 - Add more LLMs talking to each other
