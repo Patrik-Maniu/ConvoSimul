@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
     QApplication,
+    QLineEdit,
 )
 from PyQt6.QtGui import QColor
 from PDFer import export_conversation_to_pdf
@@ -29,7 +30,9 @@ class ConversationDialog(QDialog):
         self.save_N_json = 1
         self.output = QTextEdit(self)
         self.output.setReadOnly(True)
-
+        self.turns_input = QLineEdit()
+        self.turns_input.setObjectName("turns")
+        self.turns_input.setPlaceholderText("Enter number of turns before stopping (default: 1)")
         self.next_btn = QPushButton("Next", self)
         self.stop_btn = QPushButton("Stop", self)
         self.save_btn = QPushButton("Save to PDF", self)
@@ -38,6 +41,7 @@ class ConversationDialog(QDialog):
 
         btns = QHBoxLayout()
         btns.addStretch(1)
+        btns.addWidget(self.turns_input)
         btns.addWidget(self.next_btn)
         btns.addWidget(self.stop_btn)
         btns.addWidget(self.save_btn)
@@ -65,64 +69,65 @@ class ConversationDialog(QDialog):
             self.turn = True
         else:
             self.turn = False
-
+        self.turns_input.setText(str(self.turns))
         self.on_next_clicked()
 
     def on_next_clicked(self):
-        # Lazy import so a bad conversation.py doesn't kill the window before it shows.
-        try:
-            from conversation import talk
-        except Exception as e:
-            QMessageBox.critical(self, "Import Error", f"Could not import talk() from conversation.py:\n{e}")
-            return
-        
-        try:
-            if self.turn:
-                result = talk(msgs=self.A, dep=self.deploy_A, seed=self.seed_A, max_tokens=self.max_tokens_A)
-            else:
-                result = talk(msgs=self.B, dep=self.deploy_B, seed=self.seed_B, max_tokens=self.max_tokens_B)
-        except Exception as e:
-            # Show error in the text area and disable Next
-            self.output.append(f"\n[Error calling talk()]: {e}")
-            self.next_btn.setEnabled(False)
-            return
+        self.turns = int(self.turns_input.text().strip()) if self.turns_input.text().strip().isdigit() and int(self.turns_input.text().strip()) > 0 else 1
+        self.turns_input.clear()
+        while self.turns > 0:
+            # Lazy import so a bad conversation.py doesn't kill the window before it shows.
+            try:
+                from conversation import talk
+            except Exception as e:
+                QMessageBox.critical(self, "Import Error", f"Could not import talk() from conversation.py:\n{e}")
+                return
 
-        # Append result to output
-        if self.output.toPlainText():
-            if self.turn:
-                self.output.setTextColor(QColor(self.color_A))
-                self.output.append("\n" + f"{self.name_A}: " + "\n")
-            else:
-                self.output.setTextColor(QColor(self.color_B))
-                self.output.append("\n" + f"{self.name_B}: " + "\n")
-            self.output.append("\n" + result)
-        else:
-            if self.turn:
-                self.output.setTextColor(QColor(self.color_A))
-                self.output.setPlainText(f"{self.name_A}: " + "\n")
-            else:
-                self.output.setTextColor(QColor(self.color_B))
-                self.output.setPlainText(f"{self.name_B}: " + "\n")
-            self.output.append(result)
+            try:
+                if self.turn:
+                    result = talk(msgs=self.A, dep=self.deploy_A, seed=self.seed_A, max_tokens=self.max_tokens_A)
+                else:
+                    result = talk(msgs=self.B, dep=self.deploy_B, seed=self.seed_B, max_tokens=self.max_tokens_B)
+            except Exception as e:
+                # Show error in the text area and disable Next
+                self.output.append(f"\n[Error calling talk()]: {e}")
+                self.next_btn.setEnabled(False)
+                return
 
-        # Scroll to bottom
-        cursor = self.output.textCursor()
-        cursor.movePosition(cursor.MoveOperation.End)
-        self.output.setTextCursor(cursor)
-        
-        # Append new message to message lists and change turn
-        if self.turn:
-            self.A.append({"role": "assistant", "content": result})
-            self.B.append({"role": "user", "content": result})
-            self.PDF.append({"role": f"{self.name_A}:", "content": result})
-        else:
-            self.A.append({"role": "user", "content": result})
-            self.B.append({"role": "assistant", "content": result})
-            self.PDF.append({"role": f"{self.name_B}:", "content": result})
-        self.turn = not self.turn
-        self.turns -= 1
-        if self.turns == 0:
-            self.on_stop_clicked()
+            # Append result to output
+            if self.output.toPlainText():
+                if self.turn:
+                    self.output.setTextColor(QColor(self.color_A))
+                    self.output.append("\n" + f"{self.name_A}: " + "\n")
+                else:
+                    self.output.setTextColor(QColor(self.color_B))
+                    self.output.append("\n" + f"{self.name_B}: " + "\n")
+                self.output.append("\n" + result)
+            else:
+                if self.turn:
+                    self.output.setTextColor(QColor(self.color_A))
+                    self.output.setPlainText(f"{self.name_A}: " + "\n")
+                else:
+                    self.output.setTextColor(QColor(self.color_B))
+                    self.output.setPlainText(f"{self.name_B}: " + "\n")
+                self.output.append(result)
+
+            # Scroll to bottom
+            cursor = self.output.textCursor()
+            cursor.movePosition(cursor.MoveOperation.End)
+            self.output.setTextCursor(cursor)
+
+            # Append new message to message lists and change turn
+            if self.turn:
+                self.A.append({"role": "assistant", "content": result})
+                self.B.append({"role": "user", "content": result})
+                self.PDF.append({"role": f"{self.name_A}:", "content": result})
+            else:
+                self.A.append({"role": "user", "content": result})
+                self.B.append({"role": "assistant", "content": result})
+                self.PDF.append({"role": f"{self.name_B}:", "content": result})
+            self.turn = not self.turn
+            self.turns -= 1
 
     def on_stop_clicked(self):
         # Close the entire program
