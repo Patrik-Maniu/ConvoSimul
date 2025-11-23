@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QApplication,
 )
+from PyQt6.QtGui import QColor
 from PDFer import export_conversation_to_pdf
 
 class ConversationDialog(QDialog):
@@ -21,6 +22,8 @@ class ConversationDialog(QDialog):
         self.setWindowTitle("Conversation")
         self.resize(700, 500)
         self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns, self.name_A, self.name_B, self.config_A, self.config_B = talk_args
+        self.seed_A, self.max_tokens_A, self.color_A = self.config_A
+        self.seed_B, self.max_tokens_B, self.color_B = self.config_B
         self.turn = True
         self.save_N_pdf = 1
         self.save_N_json = 1
@@ -75,9 +78,9 @@ class ConversationDialog(QDialog):
         
         try:
             if self.turn:
-                result = talk(msgs=self.A, dep=self.deploy_A, config=self.config_A)
+                result = talk(msgs=self.A, dep=self.deploy_A, seed=self.seed_A, max_tokens=self.max_tokens_A)
             else:
-                result = talk(msgs=self.B, dep=self.deploy_B, config=self.config_B)
+                result = talk(msgs=self.B, dep=self.deploy_B, seed=self.seed_B, max_tokens=self.max_tokens_B)
         except Exception as e:
             # Show error in the text area and disable Next
             self.output.append(f"\n[Error calling talk()]: {e}")
@@ -87,14 +90,18 @@ class ConversationDialog(QDialog):
         # Append result to output
         if self.output.toPlainText():
             if self.turn:
+                self.output.setTextColor(QColor(self.color_A))
                 self.output.append("\n" + f"{self.name_A}: " + "\n")
             else:
+                self.output.setTextColor(QColor(self.color_B))
                 self.output.append("\n" + f"{self.name_B}: " + "\n")
             self.output.append("\n" + result)
         else:
             if self.turn:
+                self.output.setTextColor(QColor(self.color_A))
                 self.output.setPlainText(f"{self.name_A}: " + "\n")
             else:
+                self.output.setTextColor(QColor(self.color_B))
                 self.output.setPlainText(f"{self.name_B}: " + "\n")
             self.output.append(result)
 

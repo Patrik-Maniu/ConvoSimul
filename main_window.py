@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
 )
 from conversation_window import ConversationDialog
-
+import re
 
 def load_models_config(config_path: Path) -> List[Dict[str, Any]]:
     """Load and validate model list from JSON config file. Returns [] if not found."""
@@ -83,6 +83,11 @@ class MainWindow(QWidget):
         self.max_tokens_A.setObjectName("max_tokens_A")
         self.max_tokens_A.setPlaceholderText("Enter max_tokens for A... (must be a positive integer & if empty defaults to 1000)")
 
+                # Color
+        self.color_A = QLineEdit()
+        self.color_A.setObjectName("color_A")
+        self.color_A.setPlaceholderText("Enter color for A... (#RRGGBB)")
+        
             # Settings B
                 # Seed
         self.seed_B = QLineEdit()
@@ -94,6 +99,11 @@ class MainWindow(QWidget):
         self.max_tokens_B.setObjectName("max_tokens_B")
         self.max_tokens_B.setPlaceholderText("Enter max_tokens for B... (must be a positive integer & if empty defaults to 1000)")
         
+                # Color
+        self.color_B = QLineEdit()
+        self.color_B.setObjectName("color_B")
+        self.color_B.setPlaceholderText("Enter color for B... (#RRGGBB)")
+
             # Simulation settings
         self.turns = QLineEdit()
         self.turns.setObjectName("turns")
@@ -120,6 +130,7 @@ class MainWindow(QWidget):
         col1.addRow("System Prompt for A:", self.sys_edit)
         col1.addRow("Seed for A:", self.seed_A)
         col1.addRow("Max tokens for A:", self.max_tokens_A)
+        col1.addRow("Color for A:", self.color_A)
 
         col2 = QFormLayout()
         col2.addRow("Name for Model B:", self.name_B)
@@ -127,6 +138,7 @@ class MainWindow(QWidget):
         col2.addRow("System Prompt for B:", self.sys_edit_2)
         col2.addRow("Seed for B:", self.seed_B)
         col2.addRow("Max tokens for B:", self.max_tokens_B)
+        col2.addRow("Color for B:", self.color_B)
 
             # Horizontal layout to hold the two columns
         columns = QHBoxLayout()
@@ -194,6 +206,11 @@ class MainWindow(QWidget):
         
         self.status_label.setText(f"Loaded {len(models)} model(s) from {self.config_path}")
     
+    @staticmethod
+    def is_hex_color(s: str) -> bool:
+        return bool(re.fullmatch(r"#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})", s))
+
+
     def on_start_clicked(self):
         if self.models_combo.count() == 0 or self.models_combo_2.count() == 0:
             QMessageBox.warning(self, "No Models", "No models are loaded. Check your config and reload.")
@@ -202,7 +219,7 @@ class MainWindow(QWidget):
         model_1 = self.models_combo.currentData()
         model_2 = self.models_combo_2.currentData()
         if not model_1 or "deployment" not in model_1:
-            QMessageBox.warning(self, "Invalid Selection", "Selected model entry for Model A is invalid.")
+            QMessageBox.warning(self, "Invalid Selecti  on", "Selected model entry for Model A is invalid.")
             return
         if not model_2 or "deployment" not in model_2:
             QMessageBox.warning(self, "Invalid Selection", "Selected model entry for Model B is invalid.")
@@ -232,15 +249,17 @@ class MainWindow(QWidget):
         config_A = (
             int(self.seed_A.text() if self.seed_A.text().strip().isdigit() else 0),
             int(self.max_tokens_A.text() if self.max_tokens_A.text().strip().isdigit() else 1000),
+            self.color_A.text().strip() if self.is_hex_color(self.color_A.text().strip()) else "#FF0000",
         )
         config_B = (
             int(self.seed_B.text() if self.seed_B.text().strip().isdigit() else 0),
             int(self.max_tokens_B.text() if self.max_tokens_B.text().strip().isdigit() else 1000),
+            self.color_B.text().strip() if self.is_hex_color(self.color_B.text().strip()) else "#0000FF",
         )
         if config_A[0] == 0:
-            config_A = (None, config_A[1])
+            config_A = (None, config_A[1], config_A[2])
         if config_B[0] == 0:
-            config_B = (None, config_B[1])
+            config_B = (None, config_B[1], config_B[2])
         A = [{"role": "system", "content": setup_1}]
         B = [{"role": "system", "content": setup_2}]
         PDF = [{"role": f"system prompt for {name_A}:", "content": f"{setup_1}\n"},
@@ -281,8 +300,10 @@ class MainWindow(QWidget):
             "sys_B": self.sys_edit_2.toPlainText(),
             "seed_A": self.seed_A.text(),
             "max_tokens_A": self.max_tokens_A.text(),
+            "color_A": self.color_A.text(),
             "seed_B": self.seed_B.text(),
             "max_tokens_B": self.max_tokens_B.text(),
+            "color_B": self.color_B.text(),
             "turns": self.turns.text(),
             "file_name": file_name,
         }
@@ -318,8 +339,10 @@ class MainWindow(QWidget):
             self.sys_edit_2.setPlainText(presets.get("sys_B", ""))
             self.seed_A.setText(presets.get("seed_A", ""))
             self.max_tokens_A.setText(presets.get("max_tokens_A", ""))
+            self.color_A.setText(presets.get("color_A", ""))
             self.seed_B.setText(presets.get("seed_B", ""))
             self.max_tokens_B.setText(presets.get("max_tokens_B", ""))
+            self.color_B.setText(presets.get("color_B", ""))
             self.turns.setText(presets.get("turns", ""))
             self.file_name.setText(presets.get("file_name", ""))
         return

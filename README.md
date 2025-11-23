@@ -10,6 +10,7 @@ The app then orchestrates the conversation (via Azure OpenAI)
   - A "system" prompt that will instructs the LLMs on how to interact with each other
   - An optional seed (unfortunatelly it does not guarantee deterministic behaviour)
   - Max tokens per response used by each LLM
+  - A color for each model, represented in a hex value
   - Number of turns the conversation will go on for
   - File name of where to save data
 - Be able to load a custom conversation as a start
@@ -24,6 +25,7 @@ The app then orchestrates the conversation (via Azure OpenAI)
   - Save to JSON: will save current conversation in a file named <file name><number of saved in this session>.json in the directory .\conversations
 
 ## TODOs
+- Make it so you choose how many tunrs to do each time it stops before stoppping again
 - Get a third LLM to check if the 2 LLMs conversin are going out of scope
 - Use files (.pdf, .png etc...) as part of the starting input
 - Localization

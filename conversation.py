@@ -3,7 +3,7 @@ import os
 import re
 from openai import AzureOpenAI
 
-def talk(msgs, dep, config):
+def talk(msgs, dep, seed, max_tokens):
     try:
         api_version, key, endpoint = load_api_config()
     except Exception as e:
@@ -13,7 +13,6 @@ def talk(msgs, dep, config):
     azure_endpoint=endpoint,
     api_key=key,
 )
-    seed, max_tokens = config
     response = client.chat.completions.create(
         messages=msgs,
         model=dep,
