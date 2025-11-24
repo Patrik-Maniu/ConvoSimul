@@ -12,6 +12,7 @@ The app then orchestrates the conversation (via Azure OpenAI)
   - Max tokens per response used by each LLM
   - A color for each model, represented in a hex value
   - Number of turns the conversation goes on for before stopping
+  - If a referee watches the conversation and stops it if ti goes out of context
   - File name of where to save data
 - Be able to load a custom conversation as a start
 - These config settings can be saved with a dedicated button
@@ -26,7 +27,6 @@ The app then orchestrates the conversation (via Azure OpenAI)
   - Save to JSON: will save current conversation in a file named <file name><number of saved in this session>.json in the directory .\conversations
 
 ## TODOs
-- Get a third LLM to check if the 2 LLMs conversin are going out of scope
 - Use files (.pdf, .png etc...) as part of the starting input
 - Localization
 - Fix program not responding while waiting for API responce
