@@ -20,8 +20,8 @@ from PyQt6.QtWidgets import (
 from conversation_window import ConversationDialog
 import re
 
-def load_models_config(config_path: Path) -> List[Dict[str, Any]]:
-    """Load and validate model list from JSON config file. Returns [] if not found."""
+def load_models_config() -> List[Dict[str, Any]]:
+    config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
     if not config_path.exists():
         return []  # Don't crash; we'll just show a warning in the UI.
 
@@ -37,110 +37,105 @@ def load_models_config(config_path: Path) -> List[Dict[str, Any]]:
         if isinstance(model, dict) and model.get("deployment") and model.get("model_name"):
             valid_models.append({"deployment": model["deployment"], "model_name": model["model_name"]})
     return valid_models
+def import_lan_pack():
+    config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
+    if not config_path.exists():
+        return []  # Don't crash; we'll just show a warning in the UI.
 
+    with config_path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    lan_pack = data.get("lan_pack")
+    language_path = Path(__file__).resolve().parent / "language_packs" / lan_pack
+    if not language_path.exists():
+        return {}
+    with language_path.open("r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LLM Conversation Setup")
+        self.lan_pack = import_lan_pack().get("main_window.py")
+        self.setWindowTitle(self.lan_pack.get("window_title"))
         self.resize(560, 420)
         self.A_load = []
         self.B_load = []
         self.PDF_load = []
-
-        # Paths
-        self.config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
         
         # Widgets
             # Naming models
         self.name_A = QLineEdit()
-        self.name_A.setObjectName("Name for A inside conversation")
         self.name_B = QLineEdit()
-        self.name_B.setObjectName("Name for B inside conversation")
 
             # First model boxes
         self.models_combo = QComboBox()
-        self.models_combo.setObjectName("model")
         self.sys_edit = QTextEdit()
-        self.sys_edit.setObjectName("System_prompt")
-        self.sys_edit.setPlaceholderText("Enter the starting prompt...")
+        self.sys_edit.setPlaceholderText(self.lan_pack.get("system_prompt_placeholder"))
 
             # Second model boxes
         self.models_combo_2 = QComboBox()
-        self.models_combo_2.setObjectName("model_2")
         self.sys_edit_2 = QTextEdit()
-        self.sys_edit_2.setObjectName("System_prompt_2")
-        self.sys_edit_2.setPlaceholderText("Enter the starting prompt...")
+        self.sys_edit_2.setPlaceholderText(self.lan_pack.get("system_prompt_placeholder"))
 
             # Settings A
                 # Seed
         self.seed_A = QLineEdit()
-        self.seed_A.setObjectName("seed_A")
-        self.seed_A.setPlaceholderText("Enter seed (must be a positive integer & if empty defaults to random chosen by the server, deterministic behavior is not guaranteed)")
+        self.seed_A.setPlaceholderText(self.lan_pack.get("seed_placeholder"))
 
                 # Max tokens
         self.max_tokens_A = QLineEdit()
-        self.max_tokens_A.setObjectName("max_tokens_A")
-        self.max_tokens_A.setPlaceholderText("Enter max_tokens for A... (must be a positive integer & if empty defaults to 1000)")
-
+        self.max_tokens_A.setPlaceholderText(self.lan_pack.get("max_tokens_placeholder"))
                 # Color
         self.color_A = QLineEdit()
-        self.color_A.setObjectName("color_A")
-        self.color_A.setPlaceholderText("Enter color for A... (#RRGGBB)")
+        self.color_A.setPlaceholderText(self.lan_pack.get("color_placeholder"))
         
             # Settings B
                 # Seed
         self.seed_B = QLineEdit()
-        self.seed_B.setObjectName("seed_B")
-        self.seed_B.setPlaceholderText("Enter seed (must be a positive integer & if empty defaults to random chosen by the server, deterministic behavior is not guaranteed)")
+        self.seed_B.setPlaceholderText(self.lan_pack.get("seed_placeholder"))
 
                 # Max tokens
         self.max_tokens_B = QLineEdit()
-        self.max_tokens_B.setObjectName("max_tokens_B")
-        self.max_tokens_B.setPlaceholderText("Enter max_tokens for B... (must be a positive integer & if empty defaults to 1000)")
+        self.max_tokens_B.setPlaceholderText(self.lan_pack.get("max_tokens_placeholder"))
         
                 # Color
         self.color_B = QLineEdit()
-        self.color_B.setObjectName("color_B")
-        self.color_B.setPlaceholderText("Enter color for B... (#RRGGBB)")
-
+        self.color_B.setPlaceholderText(self.lan_pack.get("color_placeholder"))
             # Simulation settings
         self.turns = QLineEdit()
-        self.turns.setObjectName("turns")
-        self.turns.setPlaceholderText("Enter the number of turns... (must be a positive integer & if empty defaults to 5)")
-        self.referee = QCheckBox("Enable Referee (checks if conversation is going off-topic)")
+        self.turns.setPlaceholderText(self.lan_pack.get("turns_placeholder"))
+        self.referee = QCheckBox(self.lan_pack.get("referee_checkbox_text"))
         self.file_name = QLineEdit()
-        self.file_name.setObjectName("File_name")
-        self.file_name.setPlaceholderText("Enter the file name...")
+        self.file_name.setPlaceholderText(self.lan_pack.get("file_name_placeholder"))
 
             # Buttons / status
-        self.start_btn = QPushButton("Start")
-        self.reload_btn = QPushButton("Reload Models")
-        self.save_presets_btn = QPushButton("Save Presets")
-        self.load_presets_btn = QPushButton("Load Presets")
+        self.start_btn = QPushButton(self.lan_pack.get("start_button_text"))
+        self.reload_btn = QPushButton(self.lan_pack.get("reload_models_button_text"))
+        self.save_presets_btn = QPushButton(self.lan_pack.get("save_presets_button_text"))
+        self.load_presets_btn = QPushButton(self.lan_pack.get("load_presets_button_text"))
         self.flag_conversation_loaded = False
-        self.load_conversation_btn = QPushButton("Load Conversation")
-        self.flush_conversation_btn = QPushButton("Flush Conversations")
+        self.load_conversation_btn = QPushButton(self.lan_pack.get("load_conversation_button_text"))
+        self.flush_conversation_btn = QPushButton(self.lan_pack.get("flush_conversation_button_text"))
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
 
             # Layouts for each model column
         col1 = QFormLayout()
-        col1.addRow("Name for Model A:", self.name_A)
-        col1.addRow("Model A:", self.models_combo)
-        col1.addRow("System Prompt for A:", self.sys_edit)
-        col1.addRow("Seed for A:", self.seed_A)
-        col1.addRow("Max tokens for A:", self.max_tokens_A)
-        col1.addRow("Color for A:", self.color_A)
+        col1.addRow(self.lan_pack.get("name_description") + " A:", self.name_A)
+        col1.addRow(self.lan_pack.get("model_description") + " A:", self.models_combo)
+        col1.addRow(self.lan_pack.get("system_prompt_description") + " A:", self.sys_edit)
+        col1.addRow(self.lan_pack.get("seed_description") + " A:", self.seed_A)
+        col1.addRow(self.lan_pack.get("max_tokens_description") + " A:", self.max_tokens_A)
+        col1.addRow(self.lan_pack.get("color_description") + " A:", self.color_A)
 
         col2 = QFormLayout()
-        col2.addRow("Name for Model B:", self.name_B)
-        col2.addRow("Model B:", self.models_combo_2)
-        col2.addRow("System Prompt for B:", self.sys_edit_2)
-        col2.addRow("Seed for B:", self.seed_B)
-        col2.addRow("Max tokens for B:", self.max_tokens_B)
-        col2.addRow("Color for B:", self.color_B)
+        col2.addRow(self.lan_pack.get("name_description") + " B:", self.name_B)
+        col2.addRow(self.lan_pack.get("model_description") + " B:", self.models_combo_2)
+        col2.addRow(self.lan_pack.get("system_prompt_description") + " B:", self.sys_edit_2)
+        col2.addRow(self.lan_pack.get("seed_description") + " B:", self.seed_B)
+        col2.addRow(self.lan_pack.get("max_tokens_description") + " B:", self.max_tokens_B)
+        col2.addRow(self.lan_pack.get("color_description") + " B:", self.color_B)
 
             # Horizontal layout to hold the two columns
         columns = QHBoxLayout()
@@ -149,13 +144,13 @@ class MainWindow(QWidget):
 
             # General settings row
         settings_row = QVBoxLayout()
-        settings_row.addWidget(QLabel("Turns:"))
+        settings_row.addWidget(QLabel(self.lan_pack.get("turns_description")))
         settings_row.addWidget(self.turns)
         temp_HBox = QHBoxLayout()
-        temp_HBox.addWidget(QLabel("Referee:"))
+        temp_HBox.addWidget(QLabel(self.lan_pack.get("referee_description")))
         temp_HBox.addWidget(self.referee)
         settings_row.addLayout(temp_HBox)
-        settings_row.addWidget(QLabel("File Name:"))
+        settings_row.addWidget(QLabel(self.lan_pack.get("file_name_description")))
         settings_row.addWidget(self.file_name)
 
             # Buttons row
@@ -189,19 +184,18 @@ class MainWindow(QWidget):
         self.populate_models()
 
     def populate_models(self):
-        """Load models from JSON file into combo box. Never crashes the app."""
         self.models_combo.clear()
         self.models_combo_2.clear()
         try:
-            models = load_models_config(self.config_path)
+            models = load_models_config()
         except Exception as e:
-            QMessageBox.warning(self, "Error Loading Models", f"Could not read config:\n{e}")
-            self.status_label.setText("Status: failed to load models.")
+            QMessageBox.warning(self, self.lan_pack.get("load_models_warning_1"), f"{self.lan_pack.get("load_models_warning_2")}{e}")
+            self.status_label.setText(self.lan_pack.get("load_models_warning_status"))
             return
 
         if not models:
             self.status_label.setText(
-                f"No models found. Expected JSON at:\n{self.config_path}"
+                f"{self.lan_pack.get("load_models_no_models")}{Path(__file__).resolve().parent / "config" / "setupModels.json"}"
             )
             return
 
@@ -210,7 +204,7 @@ class MainWindow(QWidget):
             self.models_combo.addItem(label, userData=m)
             self.models_combo_2.addItem(label, userData=m)
         
-        self.status_label.setText(f"Loaded {len(models)} model(s) from {self.config_path}")
+        self.status_label.setText(f"{self.lan_pack.get("load_models_loaded_status_1")} {len(models)} {self.lan_pack.get("load_models_loaded_status_2")} {Path(__file__).resolve().parent / "config" / "setupModels.json"}")
     
     @staticmethod
     def is_hex_color(s: str) -> bool:
@@ -219,16 +213,16 @@ class MainWindow(QWidget):
 
     def on_start_clicked(self):
         if self.models_combo.count() == 0 or self.models_combo_2.count() == 0:
-            QMessageBox.warning(self, "No Models", "No models are loaded. Check your config and reload.")
+            QMessageBox.warning(self, self.lan_pack.get("on_click_no_model_chosen_1"), self.lan_pack.get("on_click_no_model_loaded_2"))
             return
 
         model_1 = self.models_combo.currentData()
         model_2 = self.models_combo_2.currentData()
         if not model_1 or "deployment" not in model_1:
-            QMessageBox.warning(self, "Invalid Selecti  on", "Selected model entry for Model A is invalid.")
+            QMessageBox.warning(self, self.lan_pack.get("on_click_model_invalid_1"), self.lan_pack.get("on_click_model_invalid_2") + " Model A " + self.lan_pack.get("on_click_model_invalid_3"))
             return
         if not model_2 or "deployment" not in model_2:
-            QMessageBox.warning(self, "Invalid Selection", "Selected model entry for Model B is invalid.")
+            QMessageBox.warning(self, self.lan_pack.get("on_click_model_invalid_1"), self.lan_pack.get("on_click_model_invalid_2") + " Model B " + self.lan_pack.get("on_click_model_invalid_3"))
             return
 
         setup_1 = self.sys_edit.toPlainText().strip()
@@ -237,18 +231,18 @@ class MainWindow(QWidget):
         turns = self.turns.text().strip()
 
         if not setup_1:
-            QMessageBox.warning(self, "Empty System setup for Model A", "Please enter a system prompt.")
+            QMessageBox.warning(self, self.lan_pack.get("on_click_system_prompt_empty_1") + " Model A", self.lan_pack.get("on_click_system_prompt_empty_2"))
             return
         if not setup_2:
-            QMessageBox.warning(self, "Empty System setup for Model B", "Please enter a system prompt.")
+            QMessageBox.warning(self, self.lan_pack.get("on_click_system_prompt_empty_1") + " Model B", self.lan_pack.get("on_click_system_prompt_empty_2"))
             return
 
         try:
             turns_int = int(turns)
             if turns_int <= 0:
-                raise ValueError("Number of turns must be positive.")
+                raise ValueError(self.lan_pack.get("on_click_turns_not_positive"))
         except ValueError as e:
-            QMessageBox.warning(self, "Invalid Turns", f"Please enter a valid number of turns:\n{e}")
+            QMessageBox.warning(self, self.lan_pack.get("on_click_turns_not_positive_warning_1"), f"{self.lan_pack.get("on_click_turns_not_positive_warning_2")}\n{e}")
             return
         name_A = self.name_A.text().strip()
         name_B = self.name_B.text().strip()
@@ -324,8 +318,7 @@ class MainWindow(QWidget):
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(presets, f, ensure_ascii=False, indent=4)
-            self.status_label.setText(f"Status: Preset saved to {file_path}")
-            print(f"Preset saved successfully to {file_path}")
+            self.status_label.setText(f"{self.lan_pack.get("preset_saved_status")} {file_path}")
         except Exception as e:
             print(f"Error saving preset: {e}")
 
@@ -338,7 +331,7 @@ class MainWindow(QWidget):
         )
         if not file_name:
             return  # User cancelled
-        self.status_label.setText(f"Loading preset from {file_name}...")
+        self.status_label.setText(f"{self.lan_pack.get("preset_loading_status")} {file_name}...")
         with open(file_name, "r", encoding="utf-8") as f:
             presets = json.load(f)
             self.name_A.setText(presets.get("name_A", ""))
@@ -365,7 +358,7 @@ class MainWindow(QWidget):
         )
         if not file_name:
             return  # User cancelled
-        self.status_label.setText(f"Loading conversation from {file_name}...")
+        self.status_label.setText(f"{self.lan_pack.get("conversation_loading_status")} {file_name}")
         with open(file_name, "r", encoding="utf-8") as f:
             data = json.load(f)
             self.A_load = data["A"]
@@ -376,8 +369,9 @@ class MainWindow(QWidget):
                 if msg["role"] == "user":
                     self.PDF_load.append({"role": f"{self.name_B.text().strip()}:", "content": msg["content"]})
             self.flag_conversation_loaded = True
-            self.status_label.setText(f"Conversation loaded from {file_name}. You can now start the simulation.")
+            self.status_label.setText(f"{self.lan_pack.get("conversation_loaded_status")} {file_name}")
         return
     def flush_conversation(self):
         self.flag_conversation_loaded = False
+        self.status_label.setText(self.lan_pack.get("conversation_flushed_status"))
         return

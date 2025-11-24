@@ -1,5 +1,6 @@
 import os
 import json
+from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog,
     QTextEdit,
@@ -14,14 +15,26 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QColor
 from PDFer import export_conversation_to_pdf
 
+def import_lan_pack():
+    config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
+    if not config_path.exists():
+        return []  # Don't crash; we'll just show a warning in the UI.
+
+    with config_path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    lan_pack = data.get("lan_pack")
+    language_path = Path(__file__).resolve().parent / "language_packs" / lan_pack
+    if not language_path.exists():
+        return {}
+    with language_path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
 class ConversationDialog(QDialog):
-    """
-    Dialog that displays conversation output from talk() and lets the user
-    request the next chunk (Next) or quit the program (Stop).
-    """
     def __init__(self, talk_args: tuple, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Conversation")
+        self.lan_pack = import_lan_pack().get("conversation_window.py")
+        self.setWindowTitle(self.lan_pack.get("window_title"))
         self.resize(700, 500)
         self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns, self.passed_referee, self.name_A, self.name_B, self.config_A, self.config_B = talk_args
         self.seed_A, self.max_tokens_A, self.color_A = self.config_A
@@ -31,14 +44,13 @@ class ConversationDialog(QDialog):
         self.save_N_json = 1
         self.output = QTextEdit(self)
         self.output.setReadOnly(True)
-        self.referee = QCheckBox("Enable Referee (checks if conversation is going off-topic)")
+        self.referee = QCheckBox(self.lan_pack.get("referee_checkbox_text"))
         self.turns_input = QLineEdit()
-        self.turns_input.setObjectName("turns")
-        self.turns_input.setPlaceholderText("Enter number of turns before stopping (default: 1)")
-        self.next_btn = QPushButton("Next", self)
-        self.stop_btn = QPushButton("Stop", self)
-        self.save_btn = QPushButton("Save to PDF", self)
-        self.save_json = QPushButton("Save to JSON", self)
+        self.turns_input.setPlaceholderText(self.lan_pack.get("turns_placeholder"))
+        self.next_btn = QPushButton(self.lan_pack.get("next_button_text"))
+        self.stop_btn = QPushButton(self.lan_pack.get("stop_button_text"))
+        self.save_btn = QPushButton(self.lan_pack.get("save_to_PDF_button_text"))
+        self.save_json = QPushButton(self.lan_pack.get("save_to_JSON_button_text"))
         self.status_label = QMessageBox(self)
 
         btns = QHBoxLayout()
@@ -92,7 +104,7 @@ class ConversationDialog(QDialog):
             try:
                 from conversation import talk
             except Exception as e:
-                QMessageBox.critical(self, "Import Error", f"Could not import talk() from conversation.py:\n{e}")
+                QMessageBox.critical(self, self.lan_pack.get("import_talk_function_error_1"), f"{self.lan_pack.get('import_talk_function_error_2')}{e}")
                 return
 
             try:
@@ -102,7 +114,7 @@ class ConversationDialog(QDialog):
                     result = talk(msgs=self.B, dep=self.deploy_B, seed=self.seed_B, max_tokens=self.max_tokens_B)
             except Exception as e:
                 # Show error in the text area and disable Next
-                self.output.append(f"\n[Error calling talk()]: {e}")
+                self.output.append(f"\n{self.lan_pack.get('import_talk_function_output')}: {e}")
                 self.next_btn.setEnabled(False)
                 return
 
@@ -142,7 +154,7 @@ class ConversationDialog(QDialog):
                 try:
                     from conversation import talk
                 except Exception as e:
-                    QMessageBox.critical(self, "Import Error", f"Could not import talk() from conversation.py:\n{e}")
+                    QMessageBox.critical(self, self.lan_pack.get("import_talk_function_error_1"), f"{self.lan_pack.get('import_talk_function_error_2')}{e}")
                     return
                 try:
                     stop = talk(msgs=context_msg, dep=self.deploy_A, seed=None, max_tokens=100)
@@ -150,10 +162,10 @@ class ConversationDialog(QDialog):
                     print(stop)
                     if("no" in stop):
                         self.turns = 0
-                        self.status_label.setText("Status: Context change detected, stopping conversation.")
+                        self.status_label.setText(self.lan_pack.get("out_of_context"))
                 except Exception as e:
                     # Show error in the text area and disable Next
-                    self.output.append(f"\n[Error calling talk()]: {e}")
+                    self.output.append(f"\n{self.lan_pack.get('import_talk_function_output')}: {e}")
                     self.next_btn.setEnabled(False)
                     return
             self.turns -= 1
@@ -188,8 +200,6 @@ class ConversationDialog(QDialog):
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(messages, f, ensure_ascii=False, indent=4)
             self.save_N_json += 1
-            self.status_label.setText(f"Status: Conversation saved to {file_path}")
-            print(f"Conversation saved successfully to {file_path}")
-            
+            self.status_label.setText(f"{self.lan_pack.get('JSON_save_success_status')} {file_path}")
         except Exception as e:
             print(f"Error saving conversation: {e}")
