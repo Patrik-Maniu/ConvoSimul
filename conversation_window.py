@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QApplication,
     QLineEdit,
+    QCheckBox,
 )
 from PyQt6.QtGui import QColor
 from PDFer import export_conversation_to_pdf
@@ -22,7 +23,7 @@ class ConversationDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Conversation")
         self.resize(700, 500)
-        self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns, self.name_A, self.name_B, self.config_A, self.config_B = talk_args
+        self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns, self.passed_referee, self.name_A, self.name_B, self.config_A, self.config_B = talk_args
         self.seed_A, self.max_tokens_A, self.color_A = self.config_A
         self.seed_B, self.max_tokens_B, self.color_B = self.config_B
         self.turn = True
@@ -30,6 +31,7 @@ class ConversationDialog(QDialog):
         self.save_N_json = 1
         self.output = QTextEdit(self)
         self.output.setReadOnly(True)
+        self.referee = QCheckBox("Enable Referee (checks if conversation is going off-topic)")
         self.turns_input = QLineEdit()
         self.turns_input.setObjectName("turns")
         self.turns_input.setPlaceholderText("Enter number of turns before stopping (default: 1)")
@@ -37,16 +39,16 @@ class ConversationDialog(QDialog):
         self.stop_btn = QPushButton("Stop", self)
         self.save_btn = QPushButton("Save to PDF", self)
         self.save_json = QPushButton("Save to JSON", self)
-
+        self.status_label = QMessageBox(self)
 
         btns = QHBoxLayout()
         btns.addStretch(1)
+        btns.addWidget(self.referee)
         btns.addWidget(self.turns_input)
         btns.addWidget(self.next_btn)
         btns.addWidget(self.stop_btn)
         btns.addWidget(self.save_btn)
         btns.addWidget(self.save_json)
-        self.status_label = QMessageBox(self)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.output)
@@ -57,6 +59,7 @@ class ConversationDialog(QDialog):
         self.stop_btn.clicked.connect(self.on_stop_clicked)
         self.save_btn.clicked.connect(self.on_save_clicked)
         self.save_json.clicked.connect(self.json_save)
+        self.referee.setChecked(self.passed_referee)
 
         # Setup
         for msg in self.A:
@@ -64,6 +67,11 @@ class ConversationDialog(QDialog):
                 self.output.append(f"{self.name_A}: " + "\n" + msg["content"] + "\n")
             if msg["role"] == "user":
                 self.output.append(f"{self.name_B}: " + "\n" + msg["content"] + "\n")
+        self.context_check = "Given the following conversation and system prompts reply with just yes or no, if the last message is still keeping the same context (some messages might be missing, just consider if the new message is a possible continuation of this context), context:\n"
+        for msg in self.PDF:
+            self.context_check += msg["role"] + ": " + msg["content"] + "\n"
+        self.context_check += "New message: \n"
+
         # Check turn
         if len(self.A) % 2 == 1:
             self.turn = True
@@ -75,6 +83,10 @@ class ConversationDialog(QDialog):
     def on_next_clicked(self):
         self.turns = int(self.turns_input.text().strip()) if self.turns_input.text().strip().isdigit() and int(self.turns_input.text().strip()) > 0 else 1
         self.turns_input.clear()
+        # Scroll to beginning of next output
+        cursor = self.output.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        self.output.setTextCursor(cursor)
         while self.turns > 0:
             # Lazy import so a bad conversation.py doesn't kill the window before it shows.
             try:
@@ -112,11 +124,6 @@ class ConversationDialog(QDialog):
                     self.output.setPlainText(f"{self.name_B}: " + "\n")
                 self.output.append(result)
 
-            # Scroll to bottom
-            cursor = self.output.textCursor()
-            cursor.movePosition(cursor.MoveOperation.End)
-            self.output.setTextCursor(cursor)
-
             # Append new message to message lists and change turn
             if self.turn:
                 self.A.append({"role": "assistant", "content": result})
@@ -127,6 +134,28 @@ class ConversationDialog(QDialog):
                 self.B.append({"role": "assistant", "content": result})
                 self.PDF.append({"role": f"{self.name_B}:", "content": result})
             self.turn = not self.turn
+            if self.referee.isChecked():
+                # Context checker
+                print("entered here")
+                context_temp = self.context_check + result + "\n reply with just yes or no."
+                context_msg = [{"role": "system", "content": "Your'e a context checker, your response will be used in a program so strictly reply just yes or no"}, {"role": "user", "content": context_temp}]
+                try:
+                    from conversation import talk
+                except Exception as e:
+                    QMessageBox.critical(self, "Import Error", f"Could not import talk() from conversation.py:\n{e}")
+                    return
+                try:
+                    stop = talk(msgs=context_msg, dep=self.deploy_A, seed=None, max_tokens=100)
+                    stop = stop.lower().strip()
+                    print(stop)
+                    if("no" in stop):
+                        self.turns = 0
+                        self.status_label.setText("Status: Context change detected, stopping conversation.")
+                except Exception as e:
+                    # Show error in the text area and disable Next
+                    self.output.append(f"\n[Error calling talk()]: {e}")
+                    self.next_btn.setEnabled(False)
+                    return
             self.turns -= 1
 
     def on_stop_clicked(self):

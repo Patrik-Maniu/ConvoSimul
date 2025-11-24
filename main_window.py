@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QMessageBox,
     QFileDialog,
+    QCheckBox,
 )
 from conversation_window import ConversationDialog
 import re
@@ -50,7 +51,7 @@ class MainWindow(QWidget):
 
         # Paths
         self.config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
-        self.labels_slider_map: Dict[QSlider, QLabel] = {}
+        
         # Widgets
             # Naming models
         self.name_A = QLineEdit()
@@ -108,6 +109,7 @@ class MainWindow(QWidget):
         self.turns = QLineEdit()
         self.turns.setObjectName("turns")
         self.turns.setPlaceholderText("Enter the number of turns... (must be a positive integer & if empty defaults to 5)")
+        self.referee = QCheckBox("Enable Referee (checks if conversation is going off-topic)")
         self.file_name = QLineEdit()
         self.file_name.setObjectName("File_name")
         self.file_name.setPlaceholderText("Enter the file name...")
@@ -149,6 +151,10 @@ class MainWindow(QWidget):
         settings_row = QVBoxLayout()
         settings_row.addWidget(QLabel("Turns:"))
         settings_row.addWidget(self.turns)
+        temp_HBox = QHBoxLayout()
+        temp_HBox.addWidget(QLabel("Referee:"))
+        temp_HBox.addWidget(self.referee)
+        settings_row.addLayout(temp_HBox)
         settings_row.addWidget(QLabel("File Name:"))
         settings_row.addWidget(self.file_name)
 
@@ -279,6 +285,7 @@ class MainWindow(QWidget):
             B,
             PDF,
             turns_int,
+            self.referee.isChecked(),
             name_A,
             name_B,
             config_A,
@@ -305,6 +312,7 @@ class MainWindow(QWidget):
             "max_tokens_B": self.max_tokens_B.text(),
             "color_B": self.color_B.text(),
             "turns": self.turns.text(),
+            "referee": self.referee.isChecked(),
             "file_name": file_name,
         }
         # Ensure the subfolder 'presets' exists
@@ -344,6 +352,7 @@ class MainWindow(QWidget):
             self.max_tokens_B.setText(presets.get("max_tokens_B", ""))
             self.color_B.setText(presets.get("color_B", ""))
             self.turns.setText(presets.get("turns", ""))
+            self.referee.setChecked(presets.get("referee", False))
             self.file_name.setText(presets.get("file_name", ""))
         return
 

@@ -29,8 +29,11 @@ The app then orchestrates the conversation (via Azure OpenAI)
 - Get a third LLM to check if the 2 LLMs conversin are going out of scope
 - Use files (.pdf, .png etc...) as part of the starting input
 - Localization
+- Fix program not responding while waiting for API responce
 - Check for max lenth of "system" prompt
+- Auto open correct subfodler when selecting a load option
 - Improve conversation exporting and importing functionality
+- Refactor code and comment everything
 - Add more LLMs talking to each other
 - Handle talking turn if there are more than just 2 LLMs
 
