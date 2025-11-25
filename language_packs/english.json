@@ -47,7 +47,8 @@
         "preset_loading_status": "Loading preset from",
         "conversation_loading_status": "Loading conversation from",
         "conversation_loaded_status": "Conversation loaded from",
-        "conversation_flushed_status": "Conversation emptied"
+        "conversation_flushed_status": "Conversation emptied",
+        "language_select_description": "Select language"
     },
     "conversation_window.py":{
         "window_title": "Conversation",

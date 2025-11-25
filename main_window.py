@@ -37,6 +37,10 @@ def load_models_config() -> List[Dict[str, Any]]:
         if isinstance(model, dict) and model.get("deployment") and model.get("model_name"):
             valid_models.append({"deployment": model["deployment"], "model_name": model["model_name"]})
     return valid_models
+
+def load_languages_list() -> List[str]:
+    return os.listdir(Path(__file__).resolve().parent / "language_packs")
+
 def import_lan_pack():
     config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
     if not config_path.exists():
@@ -52,6 +56,16 @@ def import_lan_pack():
     with language_path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
+def what_language():
+    config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
+    if not config_path.exists():
+        return []  # Don't crash; we'll just show a warning in the UI.
+
+    with config_path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    lan_pack = data.get("lan_pack")
+    return lan_pack
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -64,6 +78,7 @@ class MainWindow(QWidget):
         self.PDF_load = []
         
         # Widgets
+        self.language_select = QComboBox()
             # Naming models
         self.name_A = QLineEdit()
         self.name_B = QLineEdit()
@@ -120,6 +135,11 @@ class MainWindow(QWidget):
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
 
+            #Layout for language selection
+        top = QHBoxLayout()
+        top.addWidget(QLabel(self.lan_pack.get("language_select_description") + ":"))
+        top.addWidget(self.language_select)
+
             # Layouts for each model column
         col1 = QFormLayout()
         col1.addRow(self.lan_pack.get("name_description") + " A:", self.name_A)
@@ -166,6 +186,7 @@ class MainWindow(QWidget):
 
             # Root layout
         root = QVBoxLayout(self)
+        root.addLayout(top)
         root.addLayout(columns)
         root.addLayout(settings_row)
         root.addLayout(btn_row)
@@ -174,27 +195,31 @@ class MainWindow(QWidget):
 
             # Signals
         self.start_btn.clicked.connect(self.on_start_clicked)
-        self.reload_btn.clicked.connect(self.populate_models)
+        self.reload_btn.clicked.connect(self.populate_combos)
         self.save_presets_btn.clicked.connect(self.save_presets)
         self.load_presets_btn.clicked.connect(self.load_presets)
         self.load_conversation_btn.clicked.connect(self.load_conversation)
         self.flush_conversation_btn.clicked.connect(self.flush_conversation)
-
+        self.language_select.currentIndexChanged.connect(self.on_language_change)
             # Populate
-        self.populate_models()
+        self.populate_combos()
 
-    def populate_models(self):
+    def populate_combos(self):
         self.models_combo.clear()
         self.models_combo_2.clear()
+        self.language_select.clear()
         try:
             models = load_models_config()
+            languages = load_languages_list()
         except Exception as e:
+            # CHANGE LANG PACK LATER
             QMessageBox.warning(self, self.lan_pack.get("load_models_warning_1"), f"{self.lan_pack.get("load_models_warning_2")}{e}")
             self.status_label.setText(self.lan_pack.get("load_models_warning_status"))
             return
 
-        if not models:
+        if not models or not languages:
             self.status_label.setText(
+                # CHANGE LANG PACK LATER
                 f"{self.lan_pack.get("load_models_no_models")}{Path(__file__).resolve().parent / "config" / "setupModels.json"}"
             )
             return
@@ -204,12 +229,14 @@ class MainWindow(QWidget):
             self.models_combo.addItem(label, userData=m)
             self.models_combo_2.addItem(label, userData=m)
         
+        for lang in languages:
+            self.language_select.addItem(lang)
+        self.language_select.setCurrentText(what_language())
         self.status_label.setText(f"{self.lan_pack.get("load_models_loaded_status_1")} {len(models)} {self.lan_pack.get("load_models_loaded_status_2")} {Path(__file__).resolve().parent / "config" / "setupModels.json"}")
-    
+
     @staticmethod
     def is_hex_color(s: str) -> bool:
         return bool(re.fullmatch(r"#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})", s))
-
 
     def on_start_clicked(self):
         if self.models_combo.count() == 0 or self.models_combo_2.count() == 0:
@@ -272,6 +299,7 @@ class MainWindow(QWidget):
             PDF.extend(self.PDF_load)
         # Prepare arguments exactly as your original talk() expects
         talk_args = (
+            self.language_select.currentText(),
             name,
             model_1["deployment"],
             model_2["deployment"],
@@ -371,7 +399,35 @@ class MainWindow(QWidget):
             self.flag_conversation_loaded = True
             self.status_label.setText(f"{self.lan_pack.get("conversation_loaded_status")} {file_name}")
         return
+    
     def flush_conversation(self):
         self.flag_conversation_loaded = False
         self.status_label.setText(self.lan_pack.get("conversation_flushed_status"))
         return
+
+    def on_language_change(self):
+        selected_language = self.language_select.currentText()
+        config_path = Path(__file__).resolve().parent / "language_packs" / selected_language
+        if not config_path.exists():
+            QMessageBox.warning(self, self.lan_pack.get("language_pack_not_found_1"), f"{self.lan_pack.get("language_pack_not_found_2")}{selected_language}")
+            return
+        with config_path.open("r", encoding="utf-8") as f:
+            self.lan_pack = json.load(f).get("main_window.py")
+        # Update all UI text elements
+        self.setWindowTitle(self.lan_pack.get("window_title"))
+        self.sys_edit.setPlaceholderText(self.lan_pack.get("system_prompt_placeholder"))
+        self.sys_edit_2.setPlaceholderText(self.lan_pack.get("system_prompt_placeholder"))
+        self.seed_A.setPlaceholderText(self.lan_pack.get("seed_placeholder"))
+        self.max_tokens_A.setPlaceholderText(self.lan_pack.get("max_tokens_placeholder"))
+        self.color_A.setPlaceholderText(self.lan_pack.get("color_placeholder"))
+        self.seed_B.setPlaceholderText(self.lan_pack.get("seed_placeholder"))
+        self.max_tokens_B.setPlaceholderText(self.lan_pack.get("max_tokens_placeholder"))
+        self.color_B.setPlaceholderText(self.lan_pack.get("color_placeholder"))
+        self.turns.setPlaceholderText(self.lan_pack.get("turns_placeholder"))
+        self.referee.setText(self.lan_pack.get("referee_checkbox_text"))
+        self.start_btn.setText(self.lan_pack.get("start_button_text"))
+        self.reload_btn.setText(self.lan_pack.get("reload_models_button_text"))
+        self.save_presets_btn.setText(self.lan_pack.get("save_presets_button_text"))
+        self.load_presets_btn.setText(self.lan_pack.get("load_presets_button_text"))
+        self.load_conversation_btn.setText(self.lan_pack.get("load_conversation_button_text"))
+        self.flush_conversation_btn.setText(self.lan_pack.get("flush_conversation_button_text"))

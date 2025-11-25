@@ -15,16 +15,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QColor
 from PDFer import export_conversation_to_pdf
 
-def import_lan_pack():
-    config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
-    if not config_path.exists():
-        return []  # Don't crash; we'll just show a warning in the UI.
-
-    with config_path.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    lan_pack = data.get("lan_pack")
-    language_path = Path(__file__).resolve().parent / "language_packs" / lan_pack
+def import_lan_pack(language):
+    language_path = Path(__file__).resolve().parent / "language_packs" / language
     if not language_path.exists():
         return {}
     with language_path.open("r", encoding="utf-8") as f:
@@ -33,10 +25,10 @@ def import_lan_pack():
 class ConversationDialog(QDialog):
     def __init__(self, talk_args: tuple, parent=None):
         super().__init__(parent)
-        self.lan_pack = import_lan_pack().get("conversation_window.py")
+        self.language, self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns, self.passed_referee, self.name_A, self.name_B, self.config_A, self.config_B = talk_args
+        self.lan_pack = import_lan_pack(self.language).get("conversation_window.py")
         self.setWindowTitle(self.lan_pack.get("window_title"))
         self.resize(700, 500)
-        self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns, self.passed_referee, self.name_A, self.name_B, self.config_A, self.config_B = talk_args
         self.seed_A, self.max_tokens_A, self.color_A = self.config_A
         self.seed_B, self.max_tokens_B, self.color_B = self.config_B
         self.turn = True

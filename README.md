@@ -5,6 +5,7 @@ The app then orchestrates the conversation (via Azure OpenAI)
 
 ## Features
 - User chooses:
+  - What language the UI is in
   - How to name the 2 LLMs in the conversation
   - 2 models to be used
   - A "system" prompt that will instructs the LLMs on how to interact with each other
@@ -27,7 +28,7 @@ The app then orchestrates the conversation (via Azure OpenAI)
   - Save to JSON: will save current conversation in a file named <file name><number of saved in this session>.json in the directory .\conversations
 
 ## TODOs
-- Localization
+- If language pack is not in the folder, pick first language pack in fodler
 - Use files (.pdf, .png etc...) as part of the starting input
 - Fix program not responding while waiting for API responce
 - Check for max lenth of "system" prompt
