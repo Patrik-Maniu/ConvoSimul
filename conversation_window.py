@@ -175,14 +175,15 @@ class ConversationDialog(QDialog):
 
     def json_save(self):
         file_name = self.name + str(self.save_N_json)
-        temp_A = self.A.copy()
-        temp_B = self.B.copy()
-        temp_A = [msg for msg in temp_A if msg["role"] != "system"]
-        temp_B = [msg for msg in temp_B if msg["role"] != "system"]
-        messages = {
-            "A": temp_A,
-            "B": temp_B,
-        }
+        msgs = []
+        for msg in self.A:
+            temp = None
+            if msg["role"] == "assistant":
+                temp = {"role": "A", "content": msg["content"]}
+            if msg["role"] == "user":
+                temp = {"role": "B", "content": msg["content"]}
+            if temp is not None:
+                msgs.append(temp)
         # Ensure the subfolder 'conversations' exists
         os.makedirs(Path(__file__).resolve().parent / "outputs" / "Conversations_JSON", exist_ok=True)
         # Construct the full path (add .json extension if missing)
@@ -191,7 +192,7 @@ class ConversationDialog(QDialog):
         file_path = Path(__file__).resolve().parent / "outputs" / "Conversations_JSON" / file_name
         try:
             with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(messages, f, ensure_ascii=False, indent=4)
+                json.dump(msgs, f, ensure_ascii=False, indent=4)
             self.save_N_json += 1
             self.status_label.setText(f"{self.lan_pack.get('JSON_save_success_status')} {file_path}")
         except Exception as e:

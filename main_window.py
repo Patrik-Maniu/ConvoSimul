@@ -390,12 +390,18 @@ class MainWindow(QWidget):
         self.status_label.setText(f"{self.lan_pack.get("conversation_loading_status")} {file_name}")
         with open(file_name, "r", encoding="utf-8") as f:
             data = json.load(f)
-            self.A_load = data["A"]
-            self.B_load = data["B"]
-            for msg in self.A_load:
-                if msg["role"] == "assistant":
+            for msg in data:
+                if msg["role"] == "A":
+                    temp_A = {"role": "assistant", "content": msg["content"]}
+                    self.A_load.append(temp_A)
+                    temp_B = {"role": "user", "content": msg["content"]}
+                    self.B_load.append(temp_B)
                     self.PDF_load.append({"role": f"{self.name_A.text().strip()}:", "content": msg["content"]})
-                if msg["role"] == "user":
+                if msg["role"] == "B":
+                    temp_A = {"role": "user", "content": msg["content"]}
+                    self.A_load.append(temp_A)
+                    temp_B = {"role": "assistant", "content": msg["content"]}
+                    self.B_load.append(temp_B)
                     self.PDF_load.append({"role": f"{self.name_B.text().strip()}:", "content": msg["content"]})
             self.flag_conversation_loaded = True
             self.status_label.setText(f"{self.lan_pack.get("conversation_loaded_status")} {file_name}")

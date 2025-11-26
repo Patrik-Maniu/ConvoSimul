@@ -28,9 +28,9 @@ The app then orchestrates the conversation (via Azure OpenAI)
   - Save to JSON: will save current conversation in a file named <file name><number of saved in this session>.json in the directory .\conversations
 
 ## TODOs
+- FIX: importing conversations will not make the messages colored with the right colors
 - Use files (.pdf, .png etc...) as part of the starting input
 - Fix program not responding while waiting for API responce
-- Improve conversation exporting and importing functionality
 - Reduce technical debt
 - Add more LLMs talking to each other
 - Handle talking turn if there are more than just 2 LLMs
