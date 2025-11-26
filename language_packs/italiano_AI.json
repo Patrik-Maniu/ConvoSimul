@@ -28,8 +28,8 @@
         "referee_description": "Arbitro:",
         "file_name_description": "Nome File:",
         "load_models_warning_1": "Errore nel Caricamento dei Modelli",
-        "load_models_warning_2": "Impossibile leggere il file di configurazione:\n",
-        "load_models_warning_status": "Stato: caricamento dei modelli fallito.",
+        "load_models_warning_2": "Impossibile leggere la configurazione:\n",
+        "load_models_warning_status": "Stato: caricamento modelli fallito.",
         "load_models_no_models": "Nessun modello trovato. JSON previsto in:\n",
         "load_models_loaded_status_1": "Caricati",
         "load_models_loaded_status_2": "modello/i da",
@@ -38,7 +38,7 @@
         "on_click_model_invalid_1": "Selezione Non Valida:",
         "on_click_model_invalid_2": "La voce selezionata per il Modello",
         "on_click_model_invalid_3": "non è valida.",
-        "on_click_system_prompt_empty_1": "Setup di sistema vuoto per il Modello",
+        "on_click_system_prompt_empty_1": "Prompt di sistema vuoto per il Modello",
         "on_click_system_prompt_empty_2": "Inserisci un prompt di sistema.",
         "on_click_turns_not_positive": "Il numero di turni deve essere positivo.",
         "on_click_turns_not_positive_warning_1": "Turni Non Validi",
@@ -47,7 +47,8 @@
         "preset_loading_status": "Caricamento preset da",
         "conversation_loading_status": "Caricamento conversazione da",
         "conversation_loaded_status": "Conversazione caricata da",
-        "conversation_flushed_status": "Conversazione svuotata"
+        "conversation_flushed_status": "Conversazione svuotata",
+        "language_select_description": "Seleziona la lingua"
     },
     "conversation_window.py": {
         "window_title": "Conversazione",
