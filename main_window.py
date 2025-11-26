@@ -339,11 +339,11 @@ class MainWindow(QWidget):
             "file_name": file_name,
         }
         # Ensure the subfolder 'presets' exists
-        os.makedirs("presets", exist_ok=True)
+        os.makedirs(Path(__file__).resolve().parent / "outputs" / "presets", exist_ok=True)
         # Construct the full path (add .json extension if missing)
         if not file_name.lower().endswith(".json"):
             file_name += ".json"
-        file_path = os.path.join("presets", file_name)
+        file_path = Path(__file__).resolve().parent / "outputs" / "presets" / file_name
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(presets, f, ensure_ascii=False, indent=4)
@@ -355,7 +355,7 @@ class MainWindow(QWidget):
         file_name, _ = QFileDialog.getOpenFileName(
             self,
             "Open JSON File",         # Window title
-            "presets/",                       # Starting directory ("" = current)
+            "outputs/presets/",                       # Starting directory ("" = current)
             "JSON Files (*.json);;All Files (*)"  # File filter
         )
         if not file_name:
@@ -382,7 +382,7 @@ class MainWindow(QWidget):
         file_name, _ = QFileDialog.getOpenFileName(
             self,
             "Open JSON File",         # Window title
-            "conversations/",                       # Starting directory ("" = current)
+            "outputs/Conversations_JSON/",                       # Starting directory ("" = current)
             "JSON Files (*.json);;All Files (*)"  # File filter
         )
         if not file_name:

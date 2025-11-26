@@ -106,7 +106,7 @@ def _conversation_to_pdf(messages, output_path, title="Conversation", exported_a
 
 # -------------------- Public function to be called --------------------
 
-def export_conversation_to_pdf(messages, output_dir="./outputs", filename_prefix="", name="output"):
+def export_conversation_to_pdf(messages, output_dir="./outputs/Conversations_PDF/", filename_prefix="", name="output"):
     """
     Create a PDF from `messages` and save it into `output_dir` with a timestamped filename.
 

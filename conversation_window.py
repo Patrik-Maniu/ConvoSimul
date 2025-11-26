@@ -184,11 +184,11 @@ class ConversationDialog(QDialog):
             "B": temp_B,
         }
         # Ensure the subfolder 'conversations' exists
-        os.makedirs("conversations", exist_ok=True)
+        os.makedirs(Path(__file__).resolve().parent / "outputs" / "Conversations_JSON", exist_ok=True)
         # Construct the full path (add .json extension if missing)
         if not file_name.lower().endswith(".json"):
             file_name += ".json"
-        file_path = os.path.join("conversations", file_name)
+        file_path = Path(__file__).resolve().parent / "outputs" / "Conversations_JSON" / file_name
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(messages, f, ensure_ascii=False, indent=4)

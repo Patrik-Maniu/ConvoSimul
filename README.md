@@ -30,8 +30,6 @@ The app then orchestrates the conversation (via Azure OpenAI)
 ## TODOs
 - Use files (.pdf, .png etc...) as part of the starting input
 - Fix program not responding while waiting for API responce
-- Check for max lenth of "system" prompt
-- Auto open correct subfodler when selecting a load option
 - Improve conversation exporting and importing functionality
 - Reduce technical debt
 - Add more LLMs talking to each other
