@@ -52,7 +52,8 @@ def import_lan_pack():
     lan_pack = data.get("lan_pack")
     language_path = Path(__file__).resolve().parent / "language_packs" / lan_pack
     if not language_path.exists():
-        return {}
+        first_lan = os.listdir(Path(__file__).resolve().parent / "language_packs")[0]
+        language_path = Path(__file__).resolve().parent / "language_packs" / first_lan
     with language_path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -192,6 +193,8 @@ class MainWindow(QWidget):
         root.addLayout(btn_row)
         root.addWidget(self.status_label)
 
+            # Populate
+        self.populate_combos()
 
             # Signals
         self.start_btn.clicked.connect(self.on_start_clicked)
@@ -201,8 +204,6 @@ class MainWindow(QWidget):
         self.load_conversation_btn.clicked.connect(self.load_conversation)
         self.flush_conversation_btn.clicked.connect(self.flush_conversation)
         self.language_select.currentIndexChanged.connect(self.on_language_change)
-            # Populate
-        self.populate_combos()
 
     def populate_combos(self):
         self.models_combo.clear()
@@ -431,3 +432,9 @@ class MainWindow(QWidget):
         self.load_presets_btn.setText(self.lan_pack.get("load_presets_button_text"))
         self.load_conversation_btn.setText(self.lan_pack.get("load_conversation_button_text"))
         self.flush_conversation_btn.setText(self.lan_pack.get("flush_conversation_button_text"))
+        config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
+        with config_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["lan_pack"] = selected_language
+        with config_path.open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)

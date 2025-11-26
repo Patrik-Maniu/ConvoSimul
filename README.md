@@ -28,13 +28,12 @@ The app then orchestrates the conversation (via Azure OpenAI)
   - Save to JSON: will save current conversation in a file named <file name><number of saved in this session>.json in the directory .\conversations
 
 ## TODOs
-- If language pack is not in the folder, pick first language pack in fodler
 - Use files (.pdf, .png etc...) as part of the starting input
 - Fix program not responding while waiting for API responce
 - Check for max lenth of "system" prompt
 - Auto open correct subfodler when selecting a load option
 - Improve conversation exporting and importing functionality
-- Refactor code and comment everything
+- Reduce technical debt
 - Add more LLMs talking to each other
 - Handle talking turn if there are more than just 2 LLMs
 

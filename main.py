@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import os
 from pathlib import Path
 import sys
 from PyQt6.QtCore import Qt
@@ -20,7 +21,8 @@ def import_lan_pack():
     lan_pack = data.get("lan_pack")
     language_path = Path(__file__).resolve().parent / "language_packs" / lan_pack
     if not language_path.exists():
-        return {}
+        first_lan = os.listdir(Path(__file__).resolve().parent / "language_packs")[0]
+        language_path = Path(__file__).resolve().parent / "language_packs" / first_lan
     with language_path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
