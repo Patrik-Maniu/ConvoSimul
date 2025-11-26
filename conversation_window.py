@@ -69,8 +69,10 @@ class ConversationDialog(QDialog):
         # Setup
         for msg in self.A:
             if msg["role"] == "assistant":
+                self.output.setTextColor(QColor(self.color_A))
                 self.output.append(f"{self.name_A}: " + "\n" + msg["content"] + "\n")
             if msg["role"] == "user":
+                self.output.setTextColor(QColor(self.color_B))
                 self.output.append(f"{self.name_B}: " + "\n" + msg["content"] + "\n")
         self.context_check = "Given the following conversation and system prompts reply with just yes or no, if the last message is still keeping the same context (some messages might be missing, just consider if the new message is a possible continuation of this context), context:\n"
         for msg in self.PDF:
