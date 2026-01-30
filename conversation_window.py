@@ -15,6 +15,15 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QColor
 from PDFer import export_conversation_to_pdf
 
+def clear_temp_files():
+    temp_dir = Path(__file__).resolve().parent / "temp_pdf_images"
+    if temp_dir.exists() and temp_dir.is_dir():
+        for temp_file in temp_dir.iterdir():
+            try:
+                temp_file.unlink()
+            except Exception as e:
+                print(f"Error deleting temp file {temp_file}: {e}")
+
 def import_lan_pack(language):
     language_path = Path(__file__).resolve().parent / "language_packs" / language
     if not language_path.exists():
@@ -72,6 +81,8 @@ class ConversationDialog(QDialog):
                 self.output.setTextColor(QColor(self.color_A))
                 self.output.append(f"{self.name_A}: " + "\n" + msg["content"] + "\n")
             if msg["role"] == "user":
+                if not isinstance(msg["content"], str):
+                    continue
                 self.output.setTextColor(QColor(self.color_B))
                 self.output.append(f"{self.name_B}: " + "\n" + msg["content"] + "\n")
         self.context_check = "Given the following conversation and system prompts reply with just yes or no, if the last message is still keeping the same context (some messages might be missing, just consider if the new message is a possible continuation of this context), context:\n"
@@ -168,6 +179,7 @@ class ConversationDialog(QDialog):
     def on_stop_clicked(self):
         # Close the entire program
         export_conversation_to_pdf(messages=self.PDF, name=self.name)
+        clear_temp_files()
         QApplication.instance().quit()
         self.close()
     

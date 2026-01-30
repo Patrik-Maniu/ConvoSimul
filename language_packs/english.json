@@ -48,7 +48,11 @@
         "conversation_loading_status": "Loading conversation from",
         "conversation_loaded_status": "Conversation loaded from",
         "conversation_flushed_status": "Conversation emptied",
-        "language_select_description": "Select language"
+        "language_select_description": "Select language",
+        "load_file_button_text": "Load File",
+        "flush_file_button_text": "Flush Files",
+        "file_loading_status": "Status: File loaded from",
+        "flush_file_status": "Status: File data flushed"
     },
     "conversation_window.py":{
         "window_title": "Conversation",

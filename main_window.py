@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 from typing import Dict, Any, List
+from unittest import case
 from PyQt6.QtWidgets import (
     QWidget,
     QDialog,
@@ -19,6 +20,13 @@ from PyQt6.QtWidgets import (
 )
 from conversation_window import ConversationDialog
 import re
+import base64
+from docx import Document
+import fitz
+
+def image_to_base64(path: str) -> str:
+    with open(path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode("utf-8")
 
 def load_models_config() -> List[Dict[str, Any]]:
     config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
@@ -77,6 +85,8 @@ class MainWindow(QWidget):
         self.A_load = []
         self.B_load = []
         self.PDF_load = []
+        self.file_loaded = []
+        self.file_filters = "All supported (*.txt *.md *.json *.docx *.png *.jpg *.jpeg *.gif *.bmp *.webp *.pdf)"
         
         # Widgets
         self.language_select = QComboBox()
@@ -133,6 +143,8 @@ class MainWindow(QWidget):
         self.flag_conversation_loaded = False
         self.load_conversation_btn = QPushButton(self.lan_pack.get("load_conversation_button_text"))
         self.flush_conversation_btn = QPushButton(self.lan_pack.get("flush_conversation_button_text"))
+        self.load_file_btn = QPushButton(self.lan_pack.get("load_file_button_text"))
+        self.flush_file_btn = QPushButton(self.lan_pack.get("flush_file_button_text"))
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
 
@@ -182,6 +194,8 @@ class MainWindow(QWidget):
         btn_row.addWidget(self.load_presets_btn)
         btn_row.addWidget(self.load_conversation_btn)
         btn_row.addWidget(self.flush_conversation_btn)
+        btn_row.addWidget(self.load_file_btn)
+        btn_row.addWidget(self.flush_file_btn)
 
         btn_row.addStretch(1)
 
@@ -204,6 +218,8 @@ class MainWindow(QWidget):
         self.load_conversation_btn.clicked.connect(self.load_conversation)
         self.flush_conversation_btn.clicked.connect(self.flush_conversation)
         self.language_select.currentIndexChanged.connect(self.on_language_change)
+        self.load_file_btn.clicked.connect(self.load_file)
+        self.flush_file_btn.clicked.connect(self.flush_file)
 
     def populate_combos(self):
         self.models_combo.clear()
@@ -290,6 +306,9 @@ class MainWindow(QWidget):
             config_B = (None, config_B[1], config_B[2])
         A = [{"role": "system", "content": setup_1}]
         B = [{"role": "system", "content": setup_2}]
+        for entry in self.file_loaded:
+            A.append(entry)
+            B.append(entry)
         PDF = [{"role": f"system prompt for {name_A}:", "content": f"{setup_1}\n"},
                 {"role": f"config for {name_A}:", "content": f"Max tokens: {config_A[1]}\n Seed: {config_A[0]}"},
                 {"role": f"system prompt for {name_B}:", "content": f"{setup_2}\n"},
@@ -412,6 +431,52 @@ class MainWindow(QWidget):
         self.status_label.setText(self.lan_pack.get("conversation_flushed_status"))
         return
 
+    def load_file(self):
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open context File",         # Window title
+            "",                       # Starting directory ("" = current)
+            self.file_filters  # File filter
+        )
+        if not file_name:
+            return  # User cancelled
+        self.status_label.setText(f"{self.lan_pack.get("file_loading_status")} {file_name}")
+        match Path(file_name).suffix.lower():
+            case ".txt" | ".md" | ".json":
+                with open(file_name, "r", encoding="utf-8") as f:
+                    data = f.read()
+                    content_string = f"FILE: {data}"
+                self.file_loaded.append({"role": "system", "content": content_string})
+            case ".png" | ".jpg" | ".jpeg" | ".gif" | ".bmp" | ".webp":
+                base64_str = image_to_base64(file_name)
+                url_string = f"data:image/{Path(file_name).suffix.lower()[1:]};base64,{base64_str}"
+                self.file_loaded.append({"role": "user", "content": [{"type": "image_url", "image_url": {"url": url_string}}]})
+            case ".pdf":
+                output_dir = Path(__file__).resolve().parent / "temp_pdf_images"
+                output_dir.mkdir(parents=True, exist_ok=True)
+                doc = fitz.open(file_name)
+                urls = []
+                for page_num in range(len(doc)):
+                    page = doc.load_page(page_num)
+                    pix = page.get_pixmap(dpi=400)
+                    image_path = output_dir / f"{Path(file_name).stem}_page_{page_num + 1}.png"
+                    pix.save(image_path)
+                    base64_str = image_to_base64(str(image_path))
+                    url_string = f"data:image/png;base64,{base64_str}"
+                    urls.append({"type": "image_url", "image_url": {"url": url_string}})
+                self.file_loaded.append({"role": "user", "content": urls})
+            case ".docx":
+                doc = Document(file_name)
+                data = "\n".join([para.text for para in doc.paragraphs])
+                content_string = f"FILE: {data}"
+                self.file_loaded.append({"role": "system", "content": content_string})
+        return
+    
+    def flush_file(self):
+        self.file_loaded = []
+        self.status_label.setText(self.lan_pack.get("flush_file_status"))
+        return
+    
     def on_language_change(self):
         selected_language = self.language_select.currentText()
         config_path = Path(__file__).resolve().parent / "language_packs" / selected_language
