@@ -7,6 +7,7 @@ import re
 import time
 import unicodedata
 from collections import Counter
+from request_control import RequestsPaused, ensure_requests_allowed
 
 # Valori iniziali euristici: le soglie non sono validate sul tuo dataset.
 TFIDF_MIN_SIM = 0.10
@@ -285,6 +286,7 @@ def _check_temporal(state, speaker, text):
 
 
 def _ask_json(state, system, content, phase, max_tokens):
+    ensure_requests_allowed()
     from conversation import talk
 
     started = time.perf_counter()
@@ -632,7 +634,8 @@ def referee(
                 "esito": "pronto",
                 "motivo": "Preparazione completata",
             }
-
+        except RequestsPaused:
+            raise
         except Exception as error:
             result = {
                 "stop": True,
@@ -745,7 +748,8 @@ def referee(
                         + ", ".join(alarms)
                     ),
                 )
-
+    except RequestsPaused:
+        raise
     except Exception as error:
         result.update(
             esito="incerto",
@@ -823,6 +827,8 @@ def configure_referee(state, methods):
             "motivo": "Modalità aggiornate",
         }
 
+    except RequestsPaused:
+        raise
     except Exception as error:
         state["ready"] = False
         result = {

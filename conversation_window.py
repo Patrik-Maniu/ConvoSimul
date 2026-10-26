@@ -85,6 +85,11 @@ class ConversationDialog(QDialog):
         self.turns_input.setPlaceholderText(self.lan_pack.get("turns_placeholder"))
         self.next_btn = QPushButton(self.lan_pack.get("next_button_text"))
         self.stop_btn = QPushButton(self.lan_pack.get("stop_button_text"))
+        self.stop_btn.setText("Salva e chiudi")
+
+        self.pause_btn = QPushButton("Interrompi richieste")
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.clicked.connect(self.on_pause_clicked)
         self.save_btn = QPushButton(self.lan_pack.get("save_to_PDF_button_text"))
         self.save_json = QPushButton(self.lan_pack.get("save_to_JSON_button_text"))
         self.status_label = QLabel(self)
@@ -100,6 +105,7 @@ class ConversationDialog(QDialog):
         btns.addWidget(self.turns_input)
         btns.addWidget(self.next_btn)
         btns.addWidget(self.stop_btn)
+        btns.addWidget(self.pause_btn)
         btns.addWidget(self.save_btn)
         btns.addWidget(self.save_json)
 
@@ -164,6 +170,9 @@ class ConversationDialog(QDialog):
         self._closing = False
         self._quit_after_close = False
         self._candidate = None
+        self._pause_requested = False
+        self._batch_total = self.turns
+        self._batch_done = 0
 
         self.turns_input.setText(str(self.turns))
 
@@ -178,12 +187,17 @@ class ConversationDialog(QDialog):
             return
 
         self.next_btn.setEnabled(not self.replay_finished)
-        self.status_label.setText(
+        self._status(
             "La nuova selezione sarà applicata premendo Next."
         )
 
     def _set_busy(self, busy):
         self._busy = busy
+        self.pause_btn.setEnabled(
+            busy
+            and not self._pause_requested
+            and not self._closing
+        )
 
         if busy:
             self.referee.menu().close()
@@ -211,6 +225,7 @@ class ConversationDialog(QDialog):
     def _task_finished(self):
         task = self._task
         result, error = task.result, task.error
+        paused = task.paused
         callback = self._task_callback
 
         self._task = None
@@ -224,6 +239,10 @@ class ConversationDialog(QDialog):
             self.close()
             return
 
+        if paused:
+            self._pause_batch()
+            return
+
         if error is not None:
             if self._candidate is not None:
                 self.PDF[-1]["role"] += " [NON VALUTATO]"
@@ -231,7 +250,7 @@ class ConversationDialog(QDialog):
 
             self.turns = 0
             self._set_busy(False)
-            self.status_label.setText(error)
+            self._status(error)
             self.output.append("\n[Errore] " + error)
             return
 
@@ -242,17 +261,22 @@ class ConversationDialog(QDialog):
             return
 
         value = self.turns_input.text().strip()
+
         self.turns = (
             int(value)
             if value.isdigit() and int(value) > 0
             else 1
         )
+
         self.turns_input.clear()
 
-        self._set_busy(True)
-        self.status_label.setText("Preparazione del controllore…")
+        self._batch_total = self.turns
+        self._batch_done = 0
+        self._pause_requested = False
 
-        # Il worker modifica una copia, non lo stato usato dalla GUI.
+        self._set_busy(True)
+        self._status("Preparazione del controllore…")
+
         self._pending_state = copy.deepcopy(self.referee_state)
 
         self._run_task(
@@ -270,12 +294,24 @@ class ConversationDialog(QDialog):
         if decision["stop"]:
             self._set_busy(False)
             self._suspend_referee(decision)
-            return
 
-        self._start_turn()
+        elif self._pause_requested:
+            self._pause_batch()
+
+        elif self._candidate is not None:
+            # La risposta è già arrivata durante la pausa:
+            # deve essere controllata, non rigenerata.
+            self._check_candidate()
+
+        else:
+            self._start_turn()
 
     def _start_turn(self):
-        if self._closing:
+        if self._closing or not self._busy:
+            return
+
+        if self._pause_requested:
+            self._pause_batch()
             return
 
         if self.replay is not None:
@@ -289,7 +325,10 @@ class ConversationDialog(QDialog):
             self._generated(recorded["content"])
 
         else:
-            self.status_label.setText("Generazione del messaggio…")
+            self._status(
+                "Generazione del messaggio…",
+                in_progress=True,
+            )
 
             self._run_task(
                 partial(
@@ -329,29 +368,20 @@ class ConversationDialog(QDialog):
             "role": f"{name}:",
             "content": text,
         })
-
-        self.status_label.setText("Controllo del messaggio…")
-        self._pending_state = copy.deepcopy(self.referee_state)
-
-        self._run_task(
-            partial(
-                referee,
-                state=self._pending_state,
-                speaker=speaker,
-                message=text,
-            ),
-            self._checked,
-        )
+        self._check_candidate()
 
     def _checked(self, decision):
         self.referee_state = self._pending_state
         speaker, text = self._candidate
         self._candidate = None
 
+        self._batch_done += 1
+
+        name = self.name_A if speaker == "A" else self.name_B
+        self.PDF[-1]["role"] = f"{name}:"
+
         blocked = decision["stop"]
 
-        # In test conserviamo anche i messaggi bloccati,
-        # perché fanno parte della conversazione registrata.
         if not blocked or self.replay is not None:
             self.A.append({
                 "role": "assistant" if speaker == "A" else "user",
@@ -388,6 +418,7 @@ class ConversationDialog(QDialog):
         self.turns -= 1
 
         if blocked:
+            # Ferma questo gruppo, senza disattivare i controlli.
             self._set_busy(False)
             self._suspend_referee(decision)
 
@@ -395,17 +426,20 @@ class ConversationDialog(QDialog):
             self._set_busy(False)
             self._finish_replay()
 
+        elif self._pause_requested:
+            # L'ultimo giudizio ricevuto è stato applicato.
+            # Non parte un altro turno.
+            self._pause_batch()
+
         elif self.turns > 0:
-            # Restituisce il controllo all'event loop tra i turni.
-            QTimer.singleShot(0, self._start_turn)
+            self._start_turn()
 
         else:
             self._set_busy(False)
-            self.status_label.setText(
+            self._status(
                 "Turni completati. "
                 "Puoi cambiare i controlli e premere Next."
             )
-
     def _update_replay_progress(self):
         if self.replay is not None:
             self.progress_label.setText(
@@ -437,7 +471,7 @@ class ConversationDialog(QDialog):
         except Exception as error:
             message += f"\nSALVATAGGIO FALLITO: {error}"
 
-        self.status_label.setText(message)
+        self._status(message)
         self.output.append("\n[Test] " + message)
 
     def _suspend_referee(self, decision):
@@ -474,7 +508,7 @@ class ConversationDialog(QDialog):
             message += f"\nSALVATAGGIO FALLITO: {error}"
 
         self.output.append("\n[Controllore] " + message)
-        self.status_label.setText(message)
+        self._status(message)
 
     def _save_referee_snapshot(self, decision):
         snapshot = {
@@ -542,7 +576,7 @@ class ConversationDialog(QDialog):
 
         if self._task is not None:
             event.ignore()
-            self.status_label.setText(
+            self._status(
                 "Chiusura in attesa dell’operazione API in corso…"
             )
             return
@@ -589,6 +623,83 @@ class ConversationDialog(QDialog):
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(msgs, f, ensure_ascii=False, indent=4)
             self.save_N_json += 1
-            self.status_label.setText(f"{self.lan_pack.get('JSON_save_success_status')} {file_path}")
+            self._status(f"{self.lan_pack.get('JSON_save_success_status')} {file_path}")
         except Exception as e:
             print(f"Error saving conversation: {e}")
+    def _status(self, message, in_progress=False):
+        if in_progress:
+            number = min(
+                self._batch_done + 1,
+                self._batch_total,
+            )
+            prefix = f"Turno {number}/{self._batch_total}"
+        else:
+            prefix = (
+                f"Turni valutati: "
+                f"{self._batch_done}/{self._batch_total}"
+            )
+
+        self.status_label.setText(f"{prefix}\n{message}")
+
+    def on_pause_clicked(self):
+        if not self._busy or self._closing:
+            return
+
+        self._pause_requested = True
+        self.pause_btn.setEnabled(False)
+
+        self._status(
+            "Interruzione richiesta: "
+            "attendo la risposta già in corso."
+        )
+
+        if self._task is not None:
+            self._task.pause_requested.set()
+        else:
+            self._pause_batch()
+
+    def _pause_batch(self):
+        self.turns = 0
+        self._set_busy(False)
+
+        if self._candidate is not None:
+            speaker, _ = self._candidate
+            name = self.name_A if speaker == "A" else self.name_B
+
+            self.PDF[-1]["role"] = (
+                f"{name}: [IN ATTESA DI CONTROLLO]"
+            )
+
+            self._status(
+                "In pausa. Next controllerà il messaggio "
+                "ricevuto prima di proseguire."
+            )
+        else:
+            self._status(
+                "In pausa. Premi Next per riprendere "
+                "con i controlli selezionati."
+            )
+
+    def _check_candidate(self):
+        if self._pause_requested:
+            self._pause_batch()
+            return
+
+        speaker, text = self._candidate
+
+        self._status(
+            "Controllo del messaggio…",
+            in_progress=True,
+        )
+
+        self._pending_state = copy.deepcopy(self.referee_state)
+
+        self._run_task(
+            partial(
+                referee,
+                state=self._pending_state,
+                speaker=speaker,
+                message=text,
+            ),
+            self._checked,
+        )

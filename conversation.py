@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-
+from request_control import ensure_requests_allowed
 
 def talk(msgs, dep, max_tokens):
     from openai import AzureOpenAI
@@ -11,7 +11,11 @@ def talk(msgs, dep, max_tokens):
         api_version=api_version,
         azure_endpoint=endpoint,
         api_key=key,
+        max_retries=0,
     ) as client:
+
+        ensure_requests_allowed()
+
         response = client.chat.completions.create(
             messages=msgs,
             model=dep,
