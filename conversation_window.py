@@ -18,6 +18,12 @@ from controllore import referee, configure_referee
 from referee_menu import RefereeMenu
 from PyQt6.QtGui import QColor
 from PDFer import export_conversation_to_pdf
+import copy
+from functools import partial
+from PyQt6.QtCore import QTimer
+from api_task import ApiTask
+import conversation
+
 
 def clear_temp_files():
     temp_dir = Path(__file__).resolve().parent / "temp_pdf_images"
@@ -139,9 +145,11 @@ class ConversationDialog(QDialog):
             self.turn = self.replay.peek()["role"] == "A"
         self.referee_state = {}
 
-        preparation = referee(
+        # Inizializzazione locale: methods={} evita chiamate API.
+        # I controlli selezionati saranno applicati dal worker.
+        referee(
             state=self.referee_state,
-            methods=self.passed_referee,
+            methods={},
             prompts={
                 "A": self.A[0]["content"],
                 "B": self.B[0]["content"],
@@ -151,12 +159,16 @@ class ConversationDialog(QDialog):
             deployment=self.deploy_A,
         )
 
-        if preparation["stop"]:
-            self.next_btn.setEnabled(False)
-            self._suspend_referee(preparation)
-            return
+        self._task = None
+        self._busy = False
+        self._closing = False
+        self._quit_after_close = False
+        self._candidate = None
+
         self.turns_input.setText(str(self.turns))
-        self.on_next_clicked()
+
+        # Lascia prima che la finestra venga mostrata.
+        QTimer.singleShot(0, self.on_next_clicked)
 
     def _on_referee_selection(self):
         if (
@@ -170,128 +182,229 @@ class ConversationDialog(QDialog):
             "La nuova selezione sarà applicata premendo Next."
         )
 
-    def on_next_clicked(self):
-        if self.replay_finished:
-            return
+    def _set_busy(self, busy):
+        self._busy = busy
 
-        preparation = configure_referee(
-            self.referee_state,
-            self.referee.selected(),
+        if busy:
+            self.referee.menu().close()
+
+        for widget in (
+            self.referee,
+            self.turns_input,
+            self.save_btn,
+            self.save_json,
+        ):
+            widget.setEnabled(not busy and not self._closing)
+
+        self.next_btn.setEnabled(
+            not busy
+            and not self._closing
+            and not self.replay_finished
         )
 
-        if preparation["stop"]:
-            self._suspend_referee(preparation)
+    def _run_task(self, function, callback):
+        self._task_callback = callback
+        self._task = ApiTask(function, self)
+        self._task.finished.connect(self._task_finished)
+        self._task.start()
+
+    def _task_finished(self):
+        task = self._task
+        result, error = task.result, task.error
+        callback = self._task_callback
+
+        self._task = None
+        task.deleteLater()
+
+        if self._closing:
+            if self._candidate is not None:
+                self.PDF[-1]["role"] += " [VALUTAZIONE INTERROTTA]"
+
+            self._set_busy(False)
+            self.close()
             return
-        self.turns = int(self.turns_input.text().strip()) if self.turns_input.text().strip().isdigit() and int(self.turns_input.text().strip()) > 0 else 1
+
+        if error is not None:
+            if self._candidate is not None:
+                self.PDF[-1]["role"] += " [NON VALUTATO]"
+                self._candidate = None
+
+            self.turns = 0
+            self._set_busy(False)
+            self.status_label.setText(error)
+            self.output.append("\n[Errore] " + error)
+            return
+
+        callback(result)
+
+    def on_next_clicked(self):
+        if self._busy or self._closing or self.replay_finished:
+            return
+
+        value = self.turns_input.text().strip()
+        self.turns = (
+            int(value)
+            if value.isdigit() and int(value) > 0
+            else 1
+        )
         self.turns_input.clear()
-        # Scroll to beginning of next output
+
+        self._set_busy(True)
+        self.status_label.setText("Preparazione del controllore…")
+
+        # Il worker modifica una copia, non lo stato usato dalla GUI.
+        self._pending_state = copy.deepcopy(self.referee_state)
+
+        self._run_task(
+            partial(
+                configure_referee,
+                self._pending_state,
+                self.referee.selected(),
+            ),
+            self._prepared,
+        )
+
+    def _prepared(self, decision):
+        self.referee_state = self._pending_state
+
+        if decision["stop"]:
+            self._set_busy(False)
+            self._suspend_referee(decision)
+            return
+
+        self._start_turn()
+
+    def _start_turn(self):
+        if self._closing:
+            return
+
+        if self.replay is not None:
+            if self.replay.exhausted:
+                self._set_busy(False)
+                self._finish_replay()
+                return
+
+            recorded = self.replay.peek()
+            self.turn = recorded["role"] == "A"
+            self._generated(recorded["content"])
+
+        else:
+            self.status_label.setText("Generazione del messaggio…")
+
+            self._run_task(
+                partial(
+                    conversation.talk,
+                    msgs=copy.deepcopy(
+                        self.A if self.turn else self.B
+                    ),
+                    dep=(
+                        self.deploy_A if self.turn
+                        else self.deploy_B
+                    ),
+                    max_tokens=(
+                        self.max_tokens_A if self.turn
+                        else self.max_tokens_B
+                    ),
+                ),
+                self._generated,
+            )
+
+    def _generated(self, text):
+        speaker = "A" if self.turn else "B"
+        name = self.name_A if self.turn else self.name_B
+
+        self._candidate = (speaker, text)
+
+        # Mostra il messaggio PRIMA di avviare il giudizio.
         cursor = self.output.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
         self.output.setTextCursor(cursor)
-        while self.turns > 0:
+
+        self.output.setTextColor(
+            QColor(self.color_A if self.turn else self.color_B)
+        )
+        self.output.insertPlainText(f"\n{name}:\n{text}\n")
+
+        self.PDF.append({
+            "role": f"{name}:",
+            "content": text,
+        })
+
+        self.status_label.setText("Controllo del messaggio…")
+        self._pending_state = copy.deepcopy(self.referee_state)
+
+        self._run_task(
+            partial(
+                referee,
+                state=self._pending_state,
+                speaker=speaker,
+                message=text,
+            ),
+            self._checked,
+        )
+
+    def _checked(self, decision):
+        self.referee_state = self._pending_state
+        speaker, text = self._candidate
+        self._candidate = None
+
+        blocked = decision["stop"]
+
+        # In test conserviamo anche i messaggi bloccati,
+        # perché fanno parte della conversazione registrata.
+        if not blocked or self.replay is not None:
+            self.A.append({
+                "role": "assistant" if speaker == "A" else "user",
+                "content": text,
+            })
+            self.B.append({
+                "role": "assistant" if speaker == "B" else "user",
+                "content": text,
+            })
+
+        if blocked:
+            self.PDF[-1]["role"] += " [BLOCCATO]"
+
             if self.replay is not None:
-                if self.replay.exhausted:
-                    self._finish_replay()
-                    return
+                self.referee_state["history"].append({
+                    "turn": decision["turn"],
+                    "speaker": speaker,
+                    "content": text,
+                    "blocked": True,
+                })
 
-                recorded = self.replay.peek()
-                self.turn = recorded["role"] == "A"
-                result = recorded["content"]
+        if self.replay is not None:
+            self.replay.advance()
+            self._update_replay_progress()
 
-            else:
-                try:
-                    from conversation import talk
-
-                    if self.turn:
-                        result = talk(
-                            msgs=self.A,
-                            dep=self.deploy_A,
-                            max_tokens=self.max_tokens_A,
-                        )
-                    else:
-                        result = talk(
-                            msgs=self.B,
-                            dep=self.deploy_B,
-                            max_tokens=self.max_tokens_B,
-                        )
-
-                except Exception as error:
-                    self.output.append(
-                        f"\n{self.lan_pack.get('import_talk_function_output')}: "
-                        f"{error}"
-                    )
-                    self.next_btn.setEnabled(False)
-                    return
-
-            # Append result to output
-            name = self.name_A if self.turn else self.name_B
-            color = self.color_A if self.turn else self.color_B
-
-            self.output.setTextColor(QColor(color))
-            self.output.insertPlainText(
-                f"\n{name}:\n{result}\n"
-            )
-            # Append new message to message lists and change turn
-            if self.turn:
-                self.A.append({"role": "assistant", "content": result})
-                self.B.append({"role": "user", "content": result})
-                self.PDF.append({"role": f"{self.name_A}:", "content": result})
-            else:
-                self.A.append({"role": "user", "content": result})
-                self.B.append({"role": "assistant", "content": result})
-                self.PDF.append({"role": f"{self.name_B}:", "content": result})
-            self.turn = not self.turn
-            decision = referee(
-                state=self.referee_state,
-                # Il codice precedente ha già invertito self.turn.
-                speaker="B" if self.turn else "A",
-                message=result,
-            )
-
-            if decision["stop"]:
-                self.PDF[-1]["role"] += " [BLOCCATO]"
-
-                if self.replay is not None:
-                    # La conversazione registrata contiene comunque
-                    # questo messaggio: conserviamolo come contesto,
-                    # indicando che il controllore lo ha bloccato.
-                    self.referee_state["history"].append({
-                        "turn": decision["turn"],
-                        "speaker": "B" if self.turn else "A",
-                        "content": result,
-                        "blocked": True,
-                    })
-
-                    self.replay.advance()
-                    self._update_replay_progress()
-
-                    self.replay_finished = self.replay.exhausted
-
-                    if not self.replay_finished:
-                        self.turn = (
-                            self.replay.peek()["role"] == "A"
-                        )
-
-                else:
-                    # In modalità normale il turno bloccato
-                    # viene rimosso e potrà essere rigenerato.
-                    self.A.pop()
-                    self.B.pop()
-                    self.turn = not self.turn
-
-                self._suspend_referee(decision)
-                break
-            if self.replay is not None:
-                self.replay.advance()
-                self._update_replay_progress()
-
-                if self.replay.exhausted:
-                    self._finish_replay()
-                    return
-
+            if not self.replay.exhausted:
                 self.turn = self.replay.peek()["role"] == "A"
+            elif blocked:
+                self.replay_finished = True
 
-            self.turns -= 1
+        elif not blocked:
+            self.turn = not self.turn
+
+        self.turns -= 1
+
+        if blocked:
+            self._set_busy(False)
+            self._suspend_referee(decision)
+
+        elif self.replay is not None and self.replay.exhausted:
+            self._set_busy(False)
+            self._finish_replay()
+
+        elif self.turns > 0:
+            # Restituisce il controllo all'event loop tra i turni.
+            QTimer.singleShot(0, self._start_turn)
+
+        else:
+            self._set_busy(False)
+            self.status_label.setText(
+                "Turni completati. "
+                "Puoi cambiare i controlli e premere Next."
+            )
 
     def _update_replay_progress(self):
         if self.replay is not None:
@@ -416,12 +529,43 @@ class ConversationDialog(QDialog):
         return destination
 
     def on_stop_clicked(self):
-        # Close the entire program
-        export_conversation_to_pdf(messages=self.PDF, name=self.name)
-        clear_temp_files()
-        QApplication.instance().quit()
+        self._quit_after_close = True
         self.close()
-    
+
+    def reject(self):
+        # Gestisce anche la chiusura tramite Esc.
+        self.close()
+
+    def closeEvent(self, event):
+        self._closing = True
+        self.turns = 0
+
+        if self._task is not None:
+            event.ignore()
+            self.status_label.setText(
+                "Chiusura in attesa dell’operazione API in corso…"
+            )
+            return
+
+        if self._quit_after_close:
+            try:
+                export_conversation_to_pdf(
+                    messages=self.PDF,
+                    name=self.name,
+                )
+                clear_temp_files()
+
+            except Exception as error:
+                QMessageBox.warning(
+                    self,
+                    "Errore nel salvataggio",
+                    str(error),
+                )
+
+            QApplication.instance().quit()
+
+        event.accept()
+
     def on_save_clicked(self):
         export_conversation_to_pdf(messages=self.PDF, name=self.name + str(self.save_N_pdf))
         self.save_N_pdf += 1
