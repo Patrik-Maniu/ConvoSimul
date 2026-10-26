@@ -12,6 +12,8 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QCheckBox,
 )
+from datetime import datetime
+from controllore import referee
 from PyQt6.QtGui import QColor
 from PDFer import export_conversation_to_pdf
 
@@ -35,12 +37,27 @@ def import_lan_pack(language):
 class ConversationDialog(QDialog):
     def __init__(self, talk_args: tuple, parent=None):
         super().__init__(parent)
-        self.language, self.name, self.deploy_A, self.deploy_B, self.A, self.B, self.PDF, self.turns, self.passed_referee, self.name_A, self.name_B, self.config_A, self.config_B = talk_args
+        (
+            self.language,
+            self.name,
+            self.deploy_A,
+            self.deploy_B,
+            self.A,
+            self.B,
+            self.PDF,
+            self.turns,
+            self.passed_referee,
+            self.name_A,
+            self.name_B,
+            self.config_A,
+            self.config_B,
+            self.referee_files,
+        ) = talk_args
         self.lan_pack = import_lan_pack(self.language).get("conversation_window.py")
         self.setWindowTitle(self.lan_pack.get("window_title"))
         self.resize(700, 500)
-        self.seed_A, self.max_tokens_A, self.color_A = self.config_A
-        self.seed_B, self.max_tokens_B, self.color_B = self.config_B
+        self.max_tokens_A, self.color_A = self.config_A
+        self.max_tokens_B, self.color_B = self.config_B
         self.turn = True
         self.save_N_pdf = 1
         self.save_N_json = 1
@@ -54,6 +71,8 @@ class ConversationDialog(QDialog):
         self.save_btn = QPushButton(self.lan_pack.get("save_to_PDF_button_text"))
         self.save_json = QPushButton(self.lan_pack.get("save_to_JSON_button_text"))
         self.status_label = QMessageBox(self)
+        self.referee.setChecked(any(self.passed_referee.values()))
+        self.referee.setEnabled(any(self.passed_referee.values()))
 
         btns = QHBoxLayout()
         btns.addStretch(1)
@@ -73,7 +92,6 @@ class ConversationDialog(QDialog):
         self.stop_btn.clicked.connect(self.on_stop_clicked)
         self.save_btn.clicked.connect(self.on_save_clicked)
         self.save_json.clicked.connect(self.json_save)
-        self.referee.setChecked(self.passed_referee)
 
         # Setup
         for msg in self.A:
@@ -85,16 +103,42 @@ class ConversationDialog(QDialog):
                     continue
                 self.output.setTextColor(QColor(self.color_B))
                 self.output.append(f"{self.name_B}: " + "\n" + msg["content"] + "\n")
-        self.context_check = "Given the following conversation and system prompts reply with just yes or no, if the last message is still keeping the same context (some messages might be missing, just consider if the new message is a possible continuation of this context), context:\n"
-        for msg in self.PDF:
-            self.context_check += msg["role"] + ": " + msg["content"] + "\n"
-        self.context_check += "New message: \n"
+        initial_history = [
+            {
+                "speaker": (
+                    "A" if msg["role"] == "assistant" else "B"
+                ),
+                "content": msg["content"],
+            }
+            for msg in self.A[1 + len(self.referee_files):]
+            if msg["role"] in {"assistant", "user"}
+        ]
 
-        # Check turn
-        if len(self.A) % 2 == 1:
-            self.turn = True
-        else:
-            self.turn = False
+        # Gli allegati non devono alterare il calcolo
+        # del prossimo interlocutore.
+        self.turn = (
+            not initial_history
+            or initial_history[-1]["speaker"] != "A"
+        )
+
+        self.referee_state = {}
+
+        preparation = referee(
+            state=self.referee_state,
+            methods=self.passed_referee,
+            prompts={
+                "A": self.A[0]["content"],
+                "B": self.B[0]["content"],
+            },
+            attachments=self.referee_files,
+            history=initial_history,
+            deployment=self.deploy_A,
+        )
+
+        if preparation["stop"]:
+            self.next_btn.setEnabled(False)
+            self._suspend_referee(preparation)
+            return
         self.turns_input.setText(str(self.turns))
         self.on_next_clicked()
 
@@ -115,9 +159,9 @@ class ConversationDialog(QDialog):
 
             try:
                 if self.turn:
-                    result = talk(msgs=self.A, dep=self.deploy_A, seed=self.seed_A, max_tokens=self.max_tokens_A)
+                    result = talk(msgs=self.A, dep=self.deploy_A, max_tokens=self.max_tokens_A)
                 else:
-                    result = talk(msgs=self.B, dep=self.deploy_B, seed=self.seed_B, max_tokens=self.max_tokens_B)
+                    result = talk(msgs=self.B, dep=self.deploy_B, max_tokens=self.max_tokens_B)
             except Exception as e:
                 # Show error in the text area and disable Next
                 self.output.append(f"\n{self.lan_pack.get('import_talk_function_output')}: {e}")
@@ -152,29 +196,89 @@ class ConversationDialog(QDialog):
                 self.B.append({"role": "assistant", "content": result})
                 self.PDF.append({"role": f"{self.name_B}:", "content": result})
             self.turn = not self.turn
-            if self.referee.isChecked():
-                # Context checker
-                print("entered here")
-                context_temp = self.context_check + result + "\n reply with just yes or no."
-                context_msg = [{"role": "system", "content": "Your'e a context checker, your response will be used in a program so strictly reply just yes or no"}, {"role": "user", "content": context_temp}]
-                try:
-                    from conversation import talk
-                except Exception as e:
-                    QMessageBox.critical(self, self.lan_pack.get("import_talk_function_error_1"), f"{self.lan_pack.get('import_talk_function_error_2')}{e}")
-                    return
-                try:
-                    stop = talk(msgs=context_msg, dep=self.deploy_A, seed=None, max_tokens=100)
-                    stop = stop.lower().strip()
-                    print(stop)
-                    if("no" in stop):
-                        self.turns = 0
-                        self.status_label.setText(self.lan_pack.get("out_of_context"))
-                except Exception as e:
-                    # Show error in the text area and disable Next
-                    self.output.append(f"\n{self.lan_pack.get('import_talk_function_output')}: {e}")
-                    self.next_btn.setEnabled(False)
-                    return
+            decision = referee(
+                state=self.referee_state,
+                # Il codice precedente ha già invertito self.turn.
+                speaker="B" if self.turn else "A",
+                message=result,
+                enabled=self.referee.isChecked(),
+            )
+
+            if decision["stop"]:
+                # Il messaggio resta nel registro, ma viene rimosso
+                # dalle cronologie operative di entrambi gli agenti.
+                self.A.pop()
+                self.B.pop()
+
+                # Un eventuale Next rigenererà il turno sospeso.
+                self.turn = not self.turn
+
+                self.PDF[-1]["role"] += " [SOSPESO]"
+                self._suspend_referee(decision)
+                break
             self.turns -= 1
+
+    def _suspend_referee(self, decision):
+        self.turns = 0
+
+        message = (
+            f"{decision['esito']}: {decision['motivo']}"
+        )
+
+        snapshot = {
+            "format": "ConvoSimul-referee-v1",
+            "name": self.name,
+            "participants": {
+                "A": self.name_A,
+                "B": self.name_B,
+            },
+            "deployments": {
+                "A": self.deploy_A,
+                "B": self.deploy_B,
+            },
+            "config_A": self.config_A,
+            "config_B": self.config_B,
+            "next_speaker": "A" if self.turn else "B",
+            "decision": decision,
+            "controller": self.referee_state,
+            "transcript": self.PDF,
+        }
+
+        try:
+            folder = (
+                Path(__file__).resolve().parent
+                / "outputs"
+                / "Referee"
+            )
+            folder.mkdir(parents=True, exist_ok=True)
+
+            stamp = datetime.now().strftime(
+                "%Y%m%d_%H%M%S_%f"
+            )
+            destination = folder / f"referee_{stamp}.json"
+            temporary = destination.with_suffix(".tmp")
+
+            with temporary.open(
+                "w",
+                encoding="utf-8",
+            ) as stream:
+                json.dump(
+                    snapshot,
+                    stream,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+
+            temporary.replace(destination)
+            message += f"\nSalvataggio: {destination}"
+
+        except Exception as error:
+            message += f"\nSALVATAGGIO FALLITO: {error}"
+
+        self.output.append(
+            "\n[Controllore] " + message
+        )
+        self.status_label.setText(message)
 
     def on_stop_clicked(self):
         # Close the entire program

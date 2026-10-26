@@ -17,6 +17,9 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QFileDialog,
     QCheckBox,
+    QToolButton,
+    QMenu,
+    QWidgetAction,
 )
 from conversation_window import ConversationDialog
 import re
@@ -76,6 +79,66 @@ def what_language():
     lan_pack = data.get("lan_pack")
     return lan_pack
 
+class RefereeMenu(QToolButton):
+    def __init__(self, title="Controllore", parent=None):
+        super().__init__(parent)
+
+        self._title = title or "Controllore"
+        self._boxes = {}
+        menu = QMenu(self)
+
+        for key, label in (
+            ("tfidf", "TF-IDF e similarità coseno"),
+            ("bm25", "BM25 e confronto dei passaggi"),
+            ("temporale", "Andamento temporale e ripetizioni"),
+            ("llm", "LLM as a Judge"),
+        ):
+            box = QCheckBox(label, menu)
+            box.setStyleSheet("padding: 6px 12px;")
+
+            action = QWidgetAction(menu)
+            action.setDefaultWidget(box)
+            menu.addAction(action)
+
+            self._boxes[key] = box
+            box.toggled.connect(self._refresh)
+
+        self.setMenu(menu)
+        self.setPopupMode(
+            QToolButton.ToolButtonPopupMode.InstantPopup
+        )
+        self._refresh()
+
+    def selected(self):
+        return {
+            key: box.isChecked()
+            for key, box in self._boxes.items()
+        }
+
+    def setSelected(self, values):
+        # Un vecchio preset con referee=True
+        # corrisponde alla modalità LLM a ogni turno.
+        if isinstance(values, bool):
+            values = {"llm": values}
+
+        values = values or {}
+
+        for key, box in self._boxes.items():
+            box.setChecked(bool(values.get(key, False)))
+
+        self._refresh()
+
+    def setTitle(self, title):
+        self._title = title or "Controllore"
+        self._refresh()
+
+    def _refresh(self, checked=False):
+        count = sum(
+            box.isChecked()
+            for box in self._boxes.values()
+        )
+        self.setText(f"{self._title} ({count}/4)")
+
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -105,10 +168,6 @@ class MainWindow(QWidget):
         self.sys_edit_2.setPlaceholderText(self.lan_pack.get("system_prompt_placeholder"))
 
             # Settings A
-                # Seed
-        self.seed_A = QLineEdit()
-        self.seed_A.setPlaceholderText(self.lan_pack.get("seed_placeholder"))
-
                 # Max tokens
         self.max_tokens_A = QLineEdit()
         self.max_tokens_A.setPlaceholderText(self.lan_pack.get("max_tokens_placeholder"))
@@ -117,10 +176,6 @@ class MainWindow(QWidget):
         self.color_A.setPlaceholderText(self.lan_pack.get("color_placeholder"))
         
             # Settings B
-                # Seed
-        self.seed_B = QLineEdit()
-        self.seed_B.setPlaceholderText(self.lan_pack.get("seed_placeholder"))
-
                 # Max tokens
         self.max_tokens_B = QLineEdit()
         self.max_tokens_B.setPlaceholderText(self.lan_pack.get("max_tokens_placeholder"))
@@ -131,7 +186,10 @@ class MainWindow(QWidget):
             # Simulation settings
         self.turns = QLineEdit()
         self.turns.setPlaceholderText(self.lan_pack.get("turns_placeholder"))
-        self.referee = QCheckBox(self.lan_pack.get("referee_checkbox_text"))
+        self.referee = RefereeMenu(
+            self.lan_pack.get("referee_checkbox_text"),
+            self,
+        )
         self.file_name = QLineEdit()
         self.file_name.setPlaceholderText(self.lan_pack.get("file_name_placeholder"))
 
@@ -158,7 +216,6 @@ class MainWindow(QWidget):
         col1.addRow(self.lan_pack.get("name_description") + " A:", self.name_A)
         col1.addRow(self.lan_pack.get("model_description") + " A:", self.models_combo)
         col1.addRow(self.lan_pack.get("system_prompt_description") + " A:", self.sys_edit)
-        col1.addRow(self.lan_pack.get("seed_description") + " A:", self.seed_A)
         col1.addRow(self.lan_pack.get("max_tokens_description") + " A:", self.max_tokens_A)
         col1.addRow(self.lan_pack.get("color_description") + " A:", self.color_A)
 
@@ -166,7 +223,6 @@ class MainWindow(QWidget):
         col2.addRow(self.lan_pack.get("name_description") + " B:", self.name_B)
         col2.addRow(self.lan_pack.get("model_description") + " B:", self.models_combo_2)
         col2.addRow(self.lan_pack.get("system_prompt_description") + " B:", self.sys_edit_2)
-        col2.addRow(self.lan_pack.get("seed_description") + " B:", self.seed_B)
         col2.addRow(self.lan_pack.get("max_tokens_description") + " B:", self.max_tokens_B)
         col2.addRow(self.lan_pack.get("color_description") + " B:", self.color_B)
 
@@ -291,28 +347,26 @@ class MainWindow(QWidget):
         name_A = self.name_A.text().strip()
         name_B = self.name_B.text().strip()
         config_A = (
-            int(self.seed_A.text() if self.seed_A.text().strip().isdigit() else 0),
             int(self.max_tokens_A.text() if self.max_tokens_A.text().strip().isdigit() else 1000),
             self.color_A.text().strip() if self.is_hex_color(self.color_A.text().strip()) else "#FF0000",
         )
         config_B = (
-            int(self.seed_B.text() if self.seed_B.text().strip().isdigit() else 0),
             int(self.max_tokens_B.text() if self.max_tokens_B.text().strip().isdigit() else 1000),
             self.color_B.text().strip() if self.is_hex_color(self.color_B.text().strip()) else "#0000FF",
         )
         if config_A[0] == 0:
-            config_A = (None, config_A[1], config_A[2])
+            config_A = (None, config_A[0], config_A[2])
         if config_B[0] == 0:
-            config_B = (None, config_B[1], config_B[2])
+            config_B = (None, config_B[0], config_B[2])
         A = [{"role": "system", "content": setup_1}]
         B = [{"role": "system", "content": setup_2}]
         for entry in self.file_loaded:
             A.append(entry)
             B.append(entry)
         PDF = [{"role": f"system prompt for {name_A}:", "content": f"{setup_1}\n"},
-                {"role": f"config for {name_A}:", "content": f"Max tokens: {config_A[1]}\n Seed: {config_A[0]}"},
+                {"role": f"config for {name_A}:", "content": f"Max tokens: {config_A[0]}\n"},
                 {"role": f"system prompt for {name_B}:", "content": f"{setup_2}\n"},
-                {"role": f"config for {name_B}:", "content": f"Max tokens: {config_B[1]}\n Seed: {config_B[0]}"}]
+                {"role": f"config for {name_B}:", "content": f"Max tokens: {config_B[0]}\n"}]
         if self.flag_conversation_loaded:
             A.extend(self.A_load)
             B.extend(self.B_load)
@@ -327,11 +381,12 @@ class MainWindow(QWidget):
             B,
             PDF,
             turns_int,
-            self.referee.isChecked(),
+            self.referee.selected(),
             name_A,
             name_B,
             config_A,
-            config_B
+            config_B,
+            list(self.file_loaded),
         )
 
         # Keep a reference so it doesn't get garbage collected
@@ -347,14 +402,12 @@ class MainWindow(QWidget):
             "name_B": self.name_B.text(),
             "sys_A": self.sys_edit.toPlainText(),
             "sys_B": self.sys_edit_2.toPlainText(),
-            "seed_A": self.seed_A.text(),
             "max_tokens_A": self.max_tokens_A.text(),
             "color_A": self.color_A.text(),
-            "seed_B": self.seed_B.text(),
             "max_tokens_B": self.max_tokens_B.text(),
             "color_B": self.color_B.text(),
             "turns": self.turns.text(),
-            "referee": self.referee.isChecked(),
+            "referee": self.referee.selected(),
             "file_name": file_name,
         }
         # Ensure the subfolder 'presets' exists
@@ -386,14 +439,14 @@ class MainWindow(QWidget):
             self.name_B.setText(presets.get("name_B", ""))
             self.sys_edit.setPlainText(presets.get("sys_A", ""))
             self.sys_edit_2.setPlainText(presets.get("sys_B", ""))
-            self.seed_A.setText(presets.get("seed_A", ""))
             self.max_tokens_A.setText(presets.get("max_tokens_A", ""))
             self.color_A.setText(presets.get("color_A", ""))
-            self.seed_B.setText(presets.get("seed_B", ""))
             self.max_tokens_B.setText(presets.get("max_tokens_B", ""))
             self.color_B.setText(presets.get("color_B", ""))
             self.turns.setText(presets.get("turns", ""))
-            self.referee.setChecked(presets.get("referee", False))
+            self.referee.setSelected(
+                presets.get("referee", False)
+            )
             self.file_name.setText(presets.get("file_name", ""))
         return
 
@@ -489,14 +542,14 @@ class MainWindow(QWidget):
         self.setWindowTitle(self.lan_pack.get("window_title"))
         self.sys_edit.setPlaceholderText(self.lan_pack.get("system_prompt_placeholder"))
         self.sys_edit_2.setPlaceholderText(self.lan_pack.get("system_prompt_placeholder"))
-        self.seed_A.setPlaceholderText(self.lan_pack.get("seed_placeholder"))
         self.max_tokens_A.setPlaceholderText(self.lan_pack.get("max_tokens_placeholder"))
         self.color_A.setPlaceholderText(self.lan_pack.get("color_placeholder"))
-        self.seed_B.setPlaceholderText(self.lan_pack.get("seed_placeholder"))
         self.max_tokens_B.setPlaceholderText(self.lan_pack.get("max_tokens_placeholder"))
         self.color_B.setPlaceholderText(self.lan_pack.get("color_placeholder"))
         self.turns.setPlaceholderText(self.lan_pack.get("turns_placeholder"))
-        self.referee.setText(self.lan_pack.get("referee_checkbox_text"))
+        self.referee.setTitle(
+            self.lan_pack.get("referee_checkbox_text")
+        )
         self.start_btn.setText(self.lan_pack.get("start_button_text"))
         self.reload_btn.setText(self.lan_pack.get("reload_models_button_text"))
         self.save_presets_btn.setText(self.lan_pack.get("save_presets_button_text"))
