@@ -368,7 +368,7 @@ class MainWindow(QWidget):
             int(
                 self.max_tokens_A.text()
                 if self.max_tokens_A.text().strip().isdigit()
-                else 4000
+                else 2500
             ),
             (
                 self.color_A.text().strip()
@@ -381,7 +381,7 @@ class MainWindow(QWidget):
             int(
                 self.max_tokens_B.text()
                 if self.max_tokens_B.text().strip().isdigit()
-                else 4000
+                else 2500
             ),
             (
                 self.color_B.text().strip()

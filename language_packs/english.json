@@ -7,7 +7,7 @@
         "window_title": "LLM Conversation Setup",
         "system_prompt_placeholder": "Enter the starting prompt...",
         "seed_placeholder": "Enter seed (must be a positive integer & if empty defaults to random chosen by the server, deterministic behavior is not guaranteed)",
-        "max_tokens_placeholder": "Defaults to 1000 if empty (must be a positive integer)",
+        "max_tokens_placeholder": "Defaults to 2500 if empty (must be a positive integer)",
         "color_placeholder": "HEX value, e.g., #RRGGBB",
         "turns_placeholder": "Enter the number of turns... (must be a positive integer & if empty defaults to 3)",
         "referee_checkbox_text": "Enable Referee (checks if conversation is going off-topic)",
