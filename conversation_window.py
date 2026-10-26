@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QLineEdit,
     QCheckBox,
+    QLabel,
 )
 from datetime import datetime
 from controllore import referee
@@ -35,7 +36,7 @@ def import_lan_pack(language):
         return json.load(f)
 
 class ConversationDialog(QDialog):
-    def __init__(self, talk_args: tuple, parent=None):
+    def __init__(self, talk_args: tuple, parent=None, replay=None):
         super().__init__(parent)
         (
             self.language,
@@ -55,6 +56,11 @@ class ConversationDialog(QDialog):
         ) = talk_args
         self.lan_pack = import_lan_pack(self.language).get("conversation_window.py")
         self.setWindowTitle(self.lan_pack.get("window_title"))
+        self.replay = replay
+        self.replay_finished = False
+
+        if self.replay is not None:
+            self.setWindowTitle("Conversazione - Modalità test")
         self.resize(700, 500)
         self.max_tokens_A, self.color_A = self.config_A
         self.max_tokens_B, self.color_B = self.config_B
@@ -70,7 +76,12 @@ class ConversationDialog(QDialog):
         self.stop_btn = QPushButton(self.lan_pack.get("stop_button_text"))
         self.save_btn = QPushButton(self.lan_pack.get("save_to_PDF_button_text"))
         self.save_json = QPushButton(self.lan_pack.get("save_to_JSON_button_text"))
-        self.status_label = QMessageBox(self)
+        self.status_label = QLabel(self)
+        self.status_label.setWordWrap(True)
+
+        self.progress_label = QLabel(self)
+        self.progress_label.setVisible(self.replay is not None)
+        self._update_replay_progress()
         self.referee.setChecked(any(self.passed_referee.values()))
         self.referee.setEnabled(any(self.passed_referee.values()))
 
@@ -84,6 +95,7 @@ class ConversationDialog(QDialog):
         btns.addWidget(self.save_json)
 
         layout = QVBoxLayout(self)
+        layout.addWidget(self.progress_label)
         layout.addWidget(self.output)
         layout.addLayout(btns)
         layout.addWidget(self.status_label)
@@ -120,7 +132,8 @@ class ConversationDialog(QDialog):
             not initial_history
             or initial_history[-1]["speaker"] != "A"
         )
-
+        if self.replay is not None and not self.replay.exhausted:
+            self.turn = self.replay.peek()["role"] == "A"
         self.referee_state = {}
 
         preparation = referee(
@@ -143,6 +156,8 @@ class ConversationDialog(QDialog):
         self.on_next_clicked()
 
     def on_next_clicked(self):
+        if self.replay_finished or not self.referee_state.get("ready"):
+            return
         self.turns = int(self.turns_input.text().strip()) if self.turns_input.text().strip().isdigit() and int(self.turns_input.text().strip()) > 0 else 1
         self.turns_input.clear()
         # Scroll to beginning of next output
@@ -150,42 +165,48 @@ class ConversationDialog(QDialog):
         cursor.movePosition(cursor.MoveOperation.End)
         self.output.setTextCursor(cursor)
         while self.turns > 0:
-            # Lazy import so a bad conversation.py doesn't kill the window before it shows.
-            try:
-                from conversation import talk
-            except Exception as e:
-                QMessageBox.critical(self, self.lan_pack.get("import_talk_function_error_1"), f"{self.lan_pack.get('import_talk_function_error_2')}{e}")
-                return
+            if self.replay is not None:
+                if self.replay.exhausted:
+                    self._finish_replay()
+                    return
 
-            try:
-                if self.turn:
-                    result = talk(msgs=self.A, dep=self.deploy_A, max_tokens=self.max_tokens_A)
-                else:
-                    result = talk(msgs=self.B, dep=self.deploy_B, max_tokens=self.max_tokens_B)
-            except Exception as e:
-                # Show error in the text area and disable Next
-                self.output.append(f"\n{self.lan_pack.get('import_talk_function_output')}: {e}")
-                self.next_btn.setEnabled(False)
-                return
+                recorded = self.replay.peek()
+                self.turn = recorded["role"] == "A"
+                result = recorded["content"]
+
+            else:
+                try:
+                    from conversation import talk
+
+                    if self.turn:
+                        result = talk(
+                            msgs=self.A,
+                            dep=self.deploy_A,
+                            max_tokens=self.max_tokens_A,
+                        )
+                    else:
+                        result = talk(
+                            msgs=self.B,
+                            dep=self.deploy_B,
+                            max_tokens=self.max_tokens_B,
+                        )
+
+                except Exception as error:
+                    self.output.append(
+                        f"\n{self.lan_pack.get('import_talk_function_output')}: "
+                        f"{error}"
+                    )
+                    self.next_btn.setEnabled(False)
+                    return
 
             # Append result to output
-            if self.output.toPlainText():
-                if self.turn:
-                    self.output.setTextColor(QColor(self.color_A))
-                    self.output.append("\n" + f"{self.name_A}: " + "\n")
-                else:
-                    self.output.setTextColor(QColor(self.color_B))
-                    self.output.append("\n" + f"{self.name_B}: " + "\n")
-                self.output.append("\n" + result)
-            else:
-                if self.turn:
-                    self.output.setTextColor(QColor(self.color_A))
-                    self.output.setPlainText(f"{self.name_A}: " + "\n")
-                else:
-                    self.output.setTextColor(QColor(self.color_B))
-                    self.output.setPlainText(f"{self.name_B}: " + "\n")
-                self.output.append(result)
+            name = self.name_A if self.turn else self.name_B
+            color = self.color_A if self.turn else self.color_B
 
+            self.output.setTextColor(QColor(color))
+            self.output.insertPlainText(
+                f"\n{name}:\n{result}\n"
+            )
             # Append new message to message lists and change turn
             if self.turn:
                 self.A.append({"role": "assistant", "content": result})
@@ -205,29 +226,130 @@ class ConversationDialog(QDialog):
             )
 
             if decision["stop"]:
-                # Il messaggio resta nel registro, ma viene rimosso
-                # dalle cronologie operative di entrambi gli agenti.
-                self.A.pop()
-                self.B.pop()
+                self.PDF[-1]["role"] += " [BLOCCATO]"
 
-                # Un eventuale Next rigenererà il turno sospeso.
-                self.turn = not self.turn
+                if self.replay is not None:
+                    # La conversazione registrata contiene comunque
+                    # questo messaggio: conserviamolo come contesto,
+                    # indicando che il controllore lo ha bloccato.
+                    self.referee_state["history"].append({
+                        "turn": decision["turn"],
+                        "speaker": "B" if self.turn else "A",
+                        "content": result,
+                        "blocked": True,
+                    })
 
-                self.PDF[-1]["role"] += " [SOSPESO]"
+                    self.replay.advance()
+                    self._update_replay_progress()
+
+                    self.replay_finished = self.replay.exhausted
+
+                    if not self.replay_finished:
+                        self.turn = (
+                            self.replay.peek()["role"] == "A"
+                        )
+
+                else:
+                    # In modalità normale il turno bloccato
+                    # viene rimosso e potrà essere rigenerato.
+                    self.A.pop()
+                    self.B.pop()
+                    self.turn = not self.turn
+
                 self._suspend_referee(decision)
                 break
+            if self.replay is not None:
+                self.replay.advance()
+                self._update_replay_progress()
+
+                if self.replay.exhausted:
+                    self._finish_replay()
+                    return
+
+                self.turn = self.replay.peek()["role"] == "A"
+
             self.turns -= 1
+
+    def _update_replay_progress(self):
+        if self.replay is not None:
+            self.progress_label.setText(
+                f"Test: {self.replay.position}/{self.replay.total} "
+                "messaggi elaborati"
+            )
+
+    def _finish_replay(self):
+        if self.replay_finished:
+            return
+
+        self.replay_finished = True
+        self.turns = 0
+        self.next_btn.setEnabled(False)
+
+        message = self.lan_pack.get(
+            "test_mode_complete",
+            "Test completato: fine del file JSON.",
+        )
+        decision = {
+            "stop": False,
+            "esito": "test_completato",
+            "motivo": message,
+        }
+
+        try:
+            destination = self._save_referee_snapshot(decision)
+            message += f"\nReport: {destination}"
+        except Exception as error:
+            message += f"\nSALVATAGGIO FALLITO: {error}"
+
+        self.status_label.setText(message)
+        self.output.append("\n[Test] " + message)
 
     def _suspend_referee(self, decision):
         self.turns = 0
+        message = f"{decision['esito']}: {decision['motivo']}"
 
-        message = (
-            f"{decision['esito']}: {decision['motivo']}"
+        ready = bool(self.referee_state.get("ready"))
+
+        self.next_btn.setEnabled(
+            ready and not self.replay_finished
         )
 
+        if self.replay is not None:
+            if not ready:
+                message += (
+                    "\nPreparazione fallita: correggi l'errore "
+                    "e riavvia il test."
+                )
+            elif self.replay_finished:
+                message += (
+                    "\nUltimo messaggio del JSON: "
+                    "test terminato con un blocco."
+                )
+            else:
+                message += (
+                    "\nTest sospeso: premi Next per esaminare "
+                    "il messaggio successivo."
+                )
+
+        try:
+            destination = self._save_referee_snapshot(decision)
+            message += f"\nSalvataggio: {destination}"
+        except Exception as error:
+            message += f"\nSALVATAGGIO FALLITO: {error}"
+
+        self.output.append("\n[Controllore] " + message)
+        self.status_label.setText(message)
+
+    def _save_referee_snapshot(self, decision):
         snapshot = {
             "format": "ConvoSimul-referee-v1",
             "name": self.name,
+            "mode": "test" if self.replay is not None else "live",
+            "replay": (
+                self.replay.metadata()
+                if self.replay is not None
+                else None
+            ),
             "participants": {
                 "A": self.name_A,
                 "B": self.name_B,
@@ -238,47 +360,37 @@ class ConversationDialog(QDialog):
             },
             "config_A": self.config_A,
             "config_B": self.config_B,
-            "next_speaker": "A" if self.turn else "B",
+            "next_speaker": (
+                None
+                if self.replay is not None and self.replay.exhausted
+                else ("A" if self.turn else "B")
+            ),
             "decision": decision,
             "controller": self.referee_state,
             "transcript": self.PDF,
         }
 
-        try:
-            folder = (
-                Path(__file__).resolve().parent
-                / "outputs"
-                / "Referee"
-            )
-            folder.mkdir(parents=True, exist_ok=True)
-
-            stamp = datetime.now().strftime(
-                "%Y%m%d_%H%M%S_%f"
-            )
-            destination = folder / f"referee_{stamp}.json"
-            temporary = destination.with_suffix(".tmp")
-
-            with temporary.open(
-                "w",
-                encoding="utf-8",
-            ) as stream:
-                json.dump(
-                    snapshot,
-                    stream,
-                    ensure_ascii=False,
-                    indent=2,
-                )
-
-            temporary.replace(destination)
-            message += f"\nSalvataggio: {destination}"
-
-        except Exception as error:
-            message += f"\nSALVATAGGIO FALLITO: {error}"
-
-        self.output.append(
-            "\n[Controllore] " + message
+        folder = (
+            Path(__file__).resolve().parent
+            / "outputs"
+            / "Referee"
         )
-        self.status_label.setText(message)
+        folder.mkdir(parents=True, exist_ok=True)
+
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        destination = folder / f"referee_{stamp}.json"
+        temporary = destination.with_suffix(".tmp")
+
+        with temporary.open("w", encoding="utf-8") as stream:
+            json.dump(
+                snapshot,
+                stream,
+                ensure_ascii=False,
+                indent=2,
+            )
+
+        temporary.replace(destination)
+        return destination
 
     def on_stop_clicked(self):
         # Close the entire program
@@ -293,15 +405,13 @@ class ConversationDialog(QDialog):
 
     def json_save(self):
         file_name = self.name + str(self.save_N_json)
-        msgs = []
-        for msg in self.A:
-            temp = None
-            if msg["role"] == "assistant":
-                temp = {"role": "A", "content": msg["content"]}
-            if msg["role"] == "user":
-                temp = {"role": "B", "content": msg["content"]}
-            if temp is not None:
-                msgs.append(temp)
+        msgs = [
+            {
+                "role": msg["speaker"],
+                "content": msg["content"],
+            }
+            for msg in self.referee_state["history"]
+        ]
         # Ensure the subfolder 'conversations' exists
         os.makedirs(Path(__file__).resolve().parent / "outputs" / "Conversations_JSON", exist_ok=True)
         # Construct the full path (add .json extension if missing)

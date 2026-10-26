@@ -19,11 +19,27 @@ def talk(msgs, dep, max_tokens):
             n=1,
         )
 
-    content = response.choices[0].message.content
+    choice = response.choices[0]
+    content = choice.message.content
 
     if not isinstance(content, str) or not content.strip():
+        usage = response.usage
+        details = getattr(
+            usage,
+            "completion_tokens_details",
+            None,
+        )
+
         raise ValueError(
-            "Il modello non ha restituito contenuto testuale."
+            "Il modello non ha restituito contenuto testuale. "
+            f"deployment={dep}; "
+            f"finish_reason={choice.finish_reason}; "
+            f"limite={max_tokens}; "
+            f"completion_tokens="
+            f"{getattr(usage, 'completion_tokens', None)}; "
+            f"reasoning_tokens="
+            f"{getattr(details, 'reasoning_tokens', None)}; "
+            f"refusal={getattr(choice.message, 'refusal', None)!r}"
         )
 
     return content

@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
     QWidgetAction,
 )
 from conversation_window import ConversationDialog
+from test_mode import ConversationReplay
 import re
 import base64
 from docx import Document
@@ -203,6 +204,16 @@ class MainWindow(QWidget):
         self.flush_conversation_btn = QPushButton(self.lan_pack.get("flush_conversation_button_text"))
         self.load_file_btn = QPushButton(self.lan_pack.get("load_file_button_text"))
         self.flush_file_btn = QPushButton(self.lan_pack.get("flush_file_button_text"))
+        self.test_mode_btn = QPushButton(
+            self.lan_pack.get(
+                "test_mode_button_text",
+                "Modalità test (JSON)",
+            )
+        )
+        self.test_mode_btn.setToolTip(
+            "Legge i messaggi dal JSON mantenendo "
+            "attivi i controlli selezionati."
+        )
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
 
@@ -262,6 +273,7 @@ class MainWindow(QWidget):
         root.addLayout(settings_row)
         root.addLayout(btn_row)
         root.addWidget(self.status_label)
+        root.addWidget(self.test_mode_btn)
 
             # Populate
         self.populate_combos()
@@ -276,11 +288,11 @@ class MainWindow(QWidget):
         self.language_select.currentIndexChanged.connect(self.on_language_change)
         self.load_file_btn.clicked.connect(self.load_file)
         self.flush_file_btn.clicked.connect(self.flush_file)
+        self.test_mode_btn.clicked.connect(self.on_test_mode_clicked)
 
     def populate_combos(self):
         self.models_combo.clear()
         self.models_combo_2.clear()
-        self.language_select.clear()
         try:
             models = load_models_config()
             languages = load_languages_list()
@@ -289,7 +301,17 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, self.lan_pack.get("load_models_warning_1"), f"{self.lan_pack.get("load_models_warning_2")}{e}")
             self.status_label.setText(self.lan_pack.get("load_models_warning_status"))
             return
+        previous_signals = self.language_select.blockSignals(True)
 
+        self.language_select.clear()
+
+        for lang in languages:
+            self.language_select.addItem(lang)
+
+        if languages:
+            self.language_select.setCurrentText(what_language())
+
+        self.language_select.blockSignals(previous_signals)
         if not models or not languages:
             self.status_label.setText(
                 # CHANGE LANG PACK LATER
@@ -302,9 +324,6 @@ class MainWindow(QWidget):
             self.models_combo.addItem(label, userData=m)
             self.models_combo_2.addItem(label, userData=m)
         
-        for lang in languages:
-            self.language_select.addItem(lang)
-        self.language_select.setCurrentText(what_language())
         self.status_label.setText(f"{self.lan_pack.get("load_models_loaded_status_1")} {len(models)} {self.lan_pack.get("load_models_loaded_status_2")} {Path(__file__).resolve().parent / "config" / "setupModels.json"}")
 
     @staticmethod
@@ -312,76 +331,167 @@ class MainWindow(QWidget):
         return bool(re.fullmatch(r"#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})", s))
 
     def on_start_clicked(self):
-        if self.models_combo.count() == 0 or self.models_combo_2.count() == 0:
-            QMessageBox.warning(self, self.lan_pack.get("on_click_no_model_chosen_1"), self.lan_pack.get("on_click_no_model_loaded_2"))
+        self._start_conversation()
+
+    def on_test_mode_clicked(self):
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleziona una conversazione JSON da testare",
+            str(
+                Path(__file__).resolve().parent
+                / "outputs"
+                / "Conversations_JSON"
+            ),
+            "JSON Files (*.json)",
+        )
+
+        if not file_name:
             return
 
-        model_1 = self.models_combo.currentData()
-        model_2 = self.models_combo_2.currentData()
-        if not model_1 or "deployment" not in model_1:
-            QMessageBox.warning(self, self.lan_pack.get("on_click_model_invalid_1"), self.lan_pack.get("on_click_model_invalid_2") + " Model A " + self.lan_pack.get("on_click_model_invalid_3"))
+        try:
+            replay = ConversationReplay.from_file(file_name)
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(
+                self,
+                "Conversazione JSON non valida",
+                str(error),
+            )
             return
-        if not model_2 or "deployment" not in model_2:
-            QMessageBox.warning(self, self.lan_pack.get("on_click_model_invalid_1"), self.lan_pack.get("on_click_model_invalid_2") + " Model B " + self.lan_pack.get("on_click_model_invalid_3"))
-            return
+
+        self._start_conversation(replay=replay)
+
+    def _start_conversation(self, replay=None):
+        methods = self.referee.selected()
+        model_1 = self.models_combo.currentData() or {}
+        model_2 = self.models_combo_2.currentData() or {}
+
+        # In modalità normale servono entrambi i modelli.
+        # In test serve A soltanto se il controllore è attivo.
+        if replay is None:
+            required = [
+                ("A", model_1),
+                ("B", model_2),
+            ]
+        else:
+            required = (
+                [("A", model_1)]
+                if any(methods.values())
+                else []
+            )
+
+        for label, model in required:
+            if (
+                not isinstance(model, dict)
+                or not model.get("deployment")
+            ):
+                QMessageBox.warning(
+                    self,
+                    "Modello non configurato",
+                    f"Seleziona un deployment valido per {label}.",
+                )
+                return
 
         setup_1 = self.sys_edit.toPlainText().strip()
         setup_2 = self.sys_edit_2.toPlainText().strip()
         name = self.file_name.text().strip()
         turns = self.turns.text().strip()
 
-        if not setup_1:
-            QMessageBox.warning(self, self.lan_pack.get("on_click_system_prompt_empty_1") + " Model A", self.lan_pack.get("on_click_system_prompt_empty_2"))
-            return
-        if not setup_2:
-            QMessageBox.warning(self, self.lan_pack.get("on_click_system_prompt_empty_1") + " Model B", self.lan_pack.get("on_click_system_prompt_empty_2"))
+        if not setup_1 or not setup_2:
+            QMessageBox.warning(
+                self,
+                "Prompt mancanti",
+                "Inserisci il prompt di sistema di entrambi "
+                "gli interlocutori.",
+            )
             return
 
         try:
-            turns_int = int(turns)
+            turns_int = int(turns) if turns else 3
+
             if turns_int <= 0:
-                raise ValueError(self.lan_pack.get("on_click_turns_not_positive"))
-        except ValueError as e:
-            QMessageBox.warning(self, self.lan_pack.get("on_click_turns_not_positive_warning_1"), f"{self.lan_pack.get("on_click_turns_not_positive_warning_2")}\n{e}")
+                raise ValueError(
+                    "Il numero di turni deve essere positivo."
+                )
+        except ValueError as error:
+            QMessageBox.warning(
+                self,
+                "Turni non validi",
+                str(error),
+            )
             return
-        name_A = self.name_A.text().strip()
-        name_B = self.name_B.text().strip()
+
+        name_A = self.name_A.text().strip() or "A"
+        name_B = self.name_B.text().strip() or "B"
+
         config_A = (
-            int(self.max_tokens_A.text() if self.max_tokens_A.text().strip().isdigit() else 1000),
-            self.color_A.text().strip() if self.is_hex_color(self.color_A.text().strip()) else "#FF0000",
+            int(
+                self.max_tokens_A.text()
+                if self.max_tokens_A.text().strip().isdigit()
+                else 4000
+            ),
+            (
+                self.color_A.text().strip()
+                if self.is_hex_color(self.color_A.text().strip())
+                else "#FF0000"
+            ),
         )
+
         config_B = (
-            int(self.max_tokens_B.text() if self.max_tokens_B.text().strip().isdigit() else 1000),
-            self.color_B.text().strip() if self.is_hex_color(self.color_B.text().strip()) else "#0000FF",
+            int(
+                self.max_tokens_B.text()
+                if self.max_tokens_B.text().strip().isdigit()
+                else 4000
+            ),
+            (
+                self.color_B.text().strip()
+                if self.is_hex_color(self.color_B.text().strip())
+                else "#0000FF"
+            ),
         )
-        if config_A[0] == 0:
-            config_A = (None, config_A[0], config_A[2])
-        if config_B[0] == 0:
-            config_B = (None, config_B[0], config_B[2])
+
         A = [{"role": "system", "content": setup_1}]
         B = [{"role": "system", "content": setup_2}]
+
         for entry in self.file_loaded:
             A.append(entry)
             B.append(entry)
-        PDF = [{"role": f"system prompt for {name_A}:", "content": f"{setup_1}\n"},
-                {"role": f"config for {name_A}:", "content": f"Max tokens: {config_A[0]}\n"},
-                {"role": f"system prompt for {name_B}:", "content": f"{setup_2}\n"},
-                {"role": f"config for {name_B}:", "content": f"Max tokens: {config_B[0]}\n"}]
-        if self.flag_conversation_loaded:
+
+        PDF = [
+            {
+                "role": f"system prompt for {name_A}:",
+                "content": setup_1 + "\n",
+            },
+            {
+                "role": f"config for {name_A}:",
+                "content": f"Max tokens: {config_A[0]}",
+            },
+            {
+                "role": f"system prompt for {name_B}:",
+                "content": setup_2 + "\n",
+            },
+            {
+                "role": f"config for {name_B}:",
+                "content": f"Max tokens: {config_B[0]}",
+            },
+        ]
+
+        # Il test parte dal JSON scelto, senza incorporare
+        # conversazioni precaricate per la modalità normale.
+        if replay is None and self.flag_conversation_loaded:
             A.extend(self.A_load)
             B.extend(self.B_load)
             PDF.extend(self.PDF_load)
-        # Prepare arguments exactly as your original talk() expects
+
         talk_args = (
             self.language_select.currentText(),
             name,
-            model_1["deployment"],
-            model_2["deployment"],
+            model_1.get("deployment", ""),
+            model_2.get("deployment", ""),
             A,
             B,
             PDF,
             turns_int,
-            self.referee.selected(),
+            methods,
             name_A,
             name_B,
             config_A,
@@ -389,9 +499,13 @@ class MainWindow(QWidget):
             list(self.file_loaded),
         )
 
-        # Keep a reference so it doesn't get garbage collected
-        self.conv_dialog = ConversationDialog(talk_args=talk_args, parent=self)
-        self.conv_dialog.setModal(True)   # optional: make it modal
+        self.conv_dialog = ConversationDialog(
+            talk_args=talk_args,
+            parent=self,
+            replay=replay,
+        )
+
+        self.conv_dialog.setModal(True)
         self.conv_dialog.show()
 
     def save_presets(self):
@@ -462,6 +576,9 @@ class MainWindow(QWidget):
         self.status_label.setText(f"{self.lan_pack.get("conversation_loading_status")} {file_name}")
         with open(file_name, "r", encoding="utf-8") as f:
             data = json.load(f)
+            self.A_load.clear()
+            self.B_load.clear()
+            self.PDF_load.clear()
             for msg in data:
                 if msg["role"] == "A":
                     temp_A = {"role": "assistant", "content": msg["content"]}
@@ -480,9 +597,14 @@ class MainWindow(QWidget):
         return
     
     def flush_conversation(self):
+        self.A_load.clear()
+        self.B_load.clear()
+        self.PDF_load.clear()
+
         self.flag_conversation_loaded = False
-        self.status_label.setText(self.lan_pack.get("conversation_flushed_status"))
-        return
+        self.status_label.setText(
+            self.lan_pack.get("conversation_flushed_status")
+        )
 
     def load_file(self):
         file_name, _ = QFileDialog.getOpenFileName(
@@ -556,6 +678,7 @@ class MainWindow(QWidget):
         self.load_presets_btn.setText(self.lan_pack.get("load_presets_button_text"))
         self.load_conversation_btn.setText(self.lan_pack.get("load_conversation_button_text"))
         self.flush_conversation_btn.setText(self.lan_pack.get("flush_conversation_button_text"))
+        self.test_mode_btn.setText(self.lan_pack.get("test_mode_button_text", "Modalità test (JSON)",))
         config_path = Path(__file__).resolve().parent / "config" / "setupModels.json"
         with config_path.open("r", encoding="utf-8") as f:
             data = json.load(f)
