@@ -14,7 +14,8 @@ from PyQt6.QtWidgets import (
     QLabel,
 )
 from datetime import datetime
-from controllore import referee
+from controllore import referee, configure_referee
+from referee_menu import RefereeMenu
 from PyQt6.QtGui import QColor
 from PDFer import export_conversation_to_pdf
 
@@ -69,7 +70,11 @@ class ConversationDialog(QDialog):
         self.save_N_json = 1
         self.output = QTextEdit(self)
         self.output.setReadOnly(True)
-        self.referee = QCheckBox(self.lan_pack.get("referee_checkbox_text"))
+        self.referee = RefereeMenu("Controllore", self)
+        self.referee.setSelected(self.passed_referee)
+        self.referee.selectionChanged.connect(
+            self._on_referee_selection
+        )
         self.turns_input = QLineEdit()
         self.turns_input.setPlaceholderText(self.lan_pack.get("turns_placeholder"))
         self.next_btn = QPushButton(self.lan_pack.get("next_button_text"))
@@ -82,8 +87,6 @@ class ConversationDialog(QDialog):
         self.progress_label = QLabel(self)
         self.progress_label.setVisible(self.replay is not None)
         self._update_replay_progress()
-        self.referee.setChecked(any(self.passed_referee.values()))
-        self.referee.setEnabled(any(self.passed_referee.values()))
 
         btns = QHBoxLayout()
         btns.addStretch(1)
@@ -155,8 +158,29 @@ class ConversationDialog(QDialog):
         self.turns_input.setText(str(self.turns))
         self.on_next_clicked()
 
+    def _on_referee_selection(self):
+        if (
+            getattr(self, "_busy", False)
+            or getattr(self, "_closing", False)
+        ):
+            return
+
+        self.next_btn.setEnabled(not self.replay_finished)
+        self.status_label.setText(
+            "La nuova selezione sarà applicata premendo Next."
+        )
+
     def on_next_clicked(self):
-        if self.replay_finished or not self.referee_state.get("ready"):
+        if self.replay_finished:
+            return
+
+        preparation = configure_referee(
+            self.referee_state,
+            self.referee.selected(),
+        )
+
+        if preparation["stop"]:
+            self._suspend_referee(preparation)
             return
         self.turns = int(self.turns_input.text().strip()) if self.turns_input.text().strip().isdigit() and int(self.turns_input.text().strip()) > 0 else 1
         self.turns_input.clear()
@@ -222,7 +246,6 @@ class ConversationDialog(QDialog):
                 # Il codice precedente ha già invertito self.turn.
                 speaker="B" if self.turn else "A",
                 message=result,
-                enabled=self.referee.isChecked(),
             )
 
             if decision["stop"]:
@@ -311,7 +334,7 @@ class ConversationDialog(QDialog):
         ready = bool(self.referee_state.get("ready"))
 
         self.next_btn.setEnabled(
-            ready and not self.replay_finished
+            not self.replay_finished
         )
 
         if self.replay is not None:

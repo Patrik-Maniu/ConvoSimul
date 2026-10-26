@@ -329,6 +329,10 @@ def _ask_json(state, system, content, phase, max_tokens):
 
 
 def _prepare(state, attachments):
+    state["reference_ready"] = False
+    state["anchors"] = {}
+    state["sources"] = []
+    state["references"] = {}
     extracted = _ask_json(
         state,
         'Estrai per ciascun interlocutore i passaggi che definiscono '
@@ -462,6 +466,7 @@ def _prepare(state, attachments):
         state["references"]["A"]
         + state["references"]["B"]
     )
+    state["reference_ready"] = True
 
 
 def _judge(state, candidate, checks):
@@ -769,6 +774,68 @@ def referee(
     state["events"].append({
         "candidate": candidate,
         "decision": copy.deepcopy(result),
+    })
+
+    return result
+def configure_referee(state, methods):
+    methods = {
+        key: bool(methods.get(key, False))
+        for key in (*LOCAL_METHODS, "llm")
+    }
+
+    previous = state["methods"]
+    changed = [
+        key for key in methods
+        if methods[key] != previous[key]
+    ]
+
+    if not changed and state.get("ready"):
+        return {
+            "stop": False,
+            "esito": "pronto",
+            "motivo": "Controllore pronto",
+        }
+
+    state["methods"] = methods
+
+    # Conserva il riposo dei metodi rimasti invariati.
+    for key in changed:
+        state["cooldown_until"].pop(key, None)
+
+    # Riattivando il temporale, parte una nuova osservazione.
+    if "temporale" in changed:
+        state["temporal"].clear()
+
+    try:
+        if any(methods.values()) and not state.get("reference_ready"):
+            if not state.get("deployment"):
+                raise ValueError(
+                    "Seleziona un modello A nella pagina iniziale "
+                    "e riapri la conversazione."
+                )
+
+            _prepare(state, state["attachments"])
+
+        state["ready"] = True
+        result = {
+            "stop": False,
+            "esito": "pronto",
+            "motivo": "Modalità aggiornate",
+        }
+
+    except Exception as error:
+        state["ready"] = False
+        result = {
+            "stop": True,
+            "esito": "incerto",
+            "motivo": str(error),
+        }
+
+    state["events"].append({
+        "event": "modalita_controllore",
+        "turn": state["turn"],
+        "methods": methods.copy(),
+        "decision": result.copy(),
     })
 
     return result
